@@ -9,7 +9,11 @@
     // rompe aquí en el mismo commit en lugar de en el siguiente build.
     "paths": {
       "@xpx/ipc": ["../../packages/ipc/src/index.ts"],
-      "@xpx/kernel": ["../../packages/kernel/src/index.ts"]
+      "@xpx/kernel": ["../../packages/kernel/src/index.ts"],
+      "@xpx/provenance": ["../../packages/detectors/provenance/src/index.ts"],
+      "@xpx/extinction-validator": [
+        "../../packages/detectors/extinction-validator/src/index.ts"
+      ]
     }
   },
   "include": ["src/**/*", "test/**/*", "wxt.config.ts"]

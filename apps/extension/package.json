@@ -9,11 +9,11 @@
   "scripts": {
     "dev": "wxt",
     "build": "pnpm build:chrome && pnpm build:firefox && pnpm build:edge && pnpm build:opera && pnpm build:safari",
-    "build:chrome": "wxt build -b chrome --outDir ../../chrome_extension",
-    "build:firefox": "wxt build -b firefox --outDir ../../firefox_extension",
-    "build:edge": "wxt build -b edge --outDir ../../edge_extesion",
-    "build:opera": "wxt build -b opera --outDir ../../opera_extension",
-    "build:safari": "wxt build -b safari --outDir ../../Safari_extension",
+    "build:chrome": "wxt build -b chrome",
+    "build:firefox": "wxt build -b firefox",
+    "build:edge": "wxt build -b edge",
+    "build:opera": "wxt build -b opera",
+    "build:safari": "wxt build -b safari",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -23,6 +23,7 @@
     "@xpx/provenance": "workspace:*"
   },
   "devDependencies": {
+    "vite": "^6.4.3",
     "wxt": "^0.21.3"
   }
 }

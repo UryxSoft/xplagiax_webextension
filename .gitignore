@@ -19,3 +19,17 @@ models/*.onnx
 models/*.gguf
 *.tsbuildinfo
 .output/
+
+# Artefactos que publica `pnpm build`. Son salida de compilación, no fuente:
+# el código vive en apps/extension/ y estos cinco directorios son destinos.
+# El README de cada uno sí se versiona, porque explica precisamente eso.
+/chrome_extension/*
+!/chrome_extension/README.md
+/firefox_extension/*
+!/firefox_extension/README.md
+/edge_extesion/*
+!/edge_extesion/README.md
+/opera_extension/*
+!/opera_extension/README.md
+/Safari_extension/*
+!/Safari_extension/README.md

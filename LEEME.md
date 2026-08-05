@@ -1,108 +1,103 @@
-# Cambios — IPC, host offscreen y servidor de inferencia
+# Cambios — del kernel a una extensión instalable
 
-Base: `d659185` (merge de la PR #1). Dos commits. Sin push.
+Base: `d659185` (merge de la PR #1). Tres commits. Sin push.
 
 ## Cómo aplicarlo
 
-Desde la raíz del repositorio, con el árbol limpio y situado en `d659185`:
-
 ```bash
-git am 0001-*.patch 0002-*.patch
-```
-
-Si prefieres los ficheros sueltos, el resto del tar los trae en su ruta final.
-
-Después:
-
-```bash
-pnpm install     # @xpx/ipc es nuevo en el workspace
-pnpm test        # 197 en verde
+git am 0001-*.patch 0002-*.patch 0003-*.patch
+pnpm install
+pnpm test        # 246 en verde
 pnpm typecheck   # limpio en los 5 paquetes
+pnpm build       # produce las 5 extensiones
 ```
+
+## Qué hay ahora que antes no había
+
+El camino completo del producto, cerrado y probado sin navegador:
+
+```
+content script ──analyze──▶ background ──infer──▶ documento offscreen ──▶ kernel
+```
+
+Cárgalo en Chrome con «Cargar descomprimida» apuntando a `chrome_extension/`.
 
 ## Commit 1 — IPC tipado y host offscreen
 
-**`packages/ipc` (nuevo)** — RPC tipado sobre un `Transport` abstracto, cero
-dependencias.
+`packages/ipc`: RPC tipado sobre un `Transport` abstracto, cero dependencias.
+Validación en ambos extremos con predicados de tipo en vez de Zod o Valibot —
+el paquete corre también en el content script, con 15 KB gzip de presupuesto.
+Los errores internos se sanean antes de salir: un mensaje de excepción puede
+llevar rutas o contenido, y el content script vive en la página del usuario.
 
-- Validación en ambos extremos con predicados de tipo, no con Zod ni Valibot.
-  El paquete corre también en el content script, donde el presupuesto es de
-  15 KB gzip. Cada canal declara su validador junto al manejador.
-- Los errores internos se sanean antes de salir: un mensaje de excepción puede
-  llevar rutas o contenido, y el content script es un contexto no privilegiado
-  dentro de una página ajena. Solo un `IpcError` explícito viaja intacto.
-- Temporizadores y señales se inyectan (`env.ts`); el paquete compila sin
-  `lib DOM` para poder correr en Node.
-
-**`ChromiumRuntimeHost`** — documento offscreen. Resuelve los dos problemas de
-ciclo de vida de MV3: la carrera de arranque (el service worker muere y revive,
-y `createDocument` falla si ya existe de forma indistinguible de un error real)
-y la caída del puerto (el host se marca no listo y la siguiente llamada
-reconstruye documento y puerto).
-
-`RuntimeHost.run` exige un validador. `detectPlatform` recibe el user-agent por
-parámetro: leerlo del global lo hacía imposible de probar.
+`ChromiumRuntimeHost`: documento offscreen, con los dos problemas de ciclo de
+vida de MV3 resueltos — la carrera de arranque y la caída del puerto.
 
 ## Commit 2 — el otro extremo del puerto
 
-**`startInferenceServer`** — lo que corre dentro del documento offscreen. Sin
-esto, `run('infer', …)` hablaba con un puerto que nadie escuchaba.
+`startInferenceServer`: lo que corre dentro del documento offscreen. Impone por
+primera vez **en código** la regla de arquitectura §11. `runtime.onConnect` no
+distingue quién llama: un content script puede invocar `runtime.connect` igual
+que el background, así que comprobar `sender.tab` es lo único que separa ambos
+contextos.
 
-Aquí se impone por primera vez **en código** la regla de arquitectura §11: el
-content script no puede pedir inferencia. `runtime.onConnect` no distingue por
-sí solo quién llama —un content script puede invocar `runtime.connect` igual
-que el background— así que la comprobación de `sender.tab` es lo único que
-separa ambos contextos.
+`messaging/wire.ts`: los validadores de la frontera. El `hash` se exige como
+sha256 hexadecimal porque es la clave de caché y lo único que se persiste; el
+texto lleva techo porque quien envía puede ser un content script comprometido;
+y las dimensiones de los píxeles se contrastan con el tamaño del búfer, que es
+el invariante que no se ve y cuya violación sería una lectura fuera de rango.
 
-Un veredicto cuyo hash no coincide con el de la entrada no se entrega: acabaría
-en la caché del llamante bajo una clave que no le corresponde.
+## Commit 3 — entrypoints, normalización y artefacto real
 
-**`messaging/wire.ts`** — validadores del contrato que cruza el puerto. Es la
-frontera de confianza real:
+`content/normalize.ts`: normaliza a NFC y elimina caracteres de ancho cero. Dos
+motivos que apuntan al mismo sitio — dos textos que se leen igual deben hashear
+igual, o la caché no sirve; e insertar invisibles entre letras es la evasión más
+barata contra un detector. Los homoglifos **no** se tocan: esos sí cambian el
+significado y su tratamiento es de un detector.
 
-- El `hash` se exige como sha256 hexadecimal, porque es la clave de caché y lo
-  único que se persiste.
-- El texto lleva techo, porque quien envía puede ser un content script
-  comprometido y un texto sin cota tumba el documento offscreen.
-- Las dimensiones de los píxeles se contrastan con el tamaño del búfer. Es el
-  único invariante del objeto que no se ve a simple vista, y un desajuste
-  provocaría una lectura fuera de rango en un detector.
+`core/analyze-service.ts`: el canal del background, imagen especular del
+servidor de inferencia — aquel rechaza a quien tenga `sender.tab`, este lo
+exige. Entre los dos no queda un tercer camino hacia el motor.
 
-**`portTransport`** deja de tragarse los fallos de clonado. Un puerto caído se
-absorbe —el cliente ya tiene tiempo de espera—, pero una carga no clonable es
-un error de programación que el `catch` amplio convertía en una petición que
-jamás vuelve.
+## Lo que debes saber, y no es agradable
 
-El doble de navegador clona con `structuredClone` como Chrome y encola los
-mensajes enviados antes de que el receptor registre su oyente. Sin esa cola,
-los tests pasaban o fallaban según el orden de microtareas.
+**No hay detector de texto.** El registro planea cero detectores para texto, así
+que hoy el kernel se abstiene siempre con `NO_EVIDENCE`. Está fijado por test a
+propósito, para que el test caiga el día que llegue la estilometría (hito S4) y
+no antes. Es la respuesta correcta: un llr sin su conjunto de calibración no
+significa nada (ADR-006), e inventar uno para que «salga algo» sería peor que
+callarse. Las imágenes sí producen veredicto real vía procedencia.
 
-## Estado
+**Tres fallos previos impedían tener artefacto**, y estaban ahí desde antes:
 
-- 197 tests en verde (79 nuevos), con el camino completo service worker ↔
-  documento offscreen ↔ kernel ejercitado de extremo a extremo.
-- Typecheck limpio en los 5 paquetes, partiendo de cero.
+1. Los scripts pasaban `wxt build --outDir`, que no es una opción de wxt. El
+   build fallaba antes de compilar nada.
+2. `default_locale: 'es'` sin árbol `_locales`. El navegador se niega a cargar
+   una extensión así.
+3. Firefox y Safari se construían como MV2, contra la matriz de compatibilidad.
 
-## Dos cosas que debes saber
+**Choque de versiones**: wxt 0.21 exige Vite 6 y vitest 2 arrastraba Vite 5, con
+lo que el build ni arrancaba. Se sube a vitest 3 y Vite 6.
 
-1. **Arreglo previo, fuera de encargo**: el typecheck de los detectores fallaba
-   en un checkout limpio. Usan project references pero corrían con `tsc -p`,
-   que no construye las declaraciones del kernel. Pasan a `tsc --build`. Sin
-   eso no había forma de verificar el trabajo con `pnpm check`.
-2. **`pnpm lint` sigue roto y no se toca aquí**: el script es `eslint .` y en
-   el repositorio no hay ni configuración de ESLint ni la dependencia.
+**`pnpm lint` sigue roto** y no se toca aquí: el script es `eslint .` y no hay
+ni configuración de ESLint ni la dependencia. Es el único punto de `pnpm check`
+que no pasa.
 
-## Lo siguiente, cuando retomes
+## Estado frente al plan del MVP
 
-El camino está montado pero aún no hay quien lo use: faltan los *entrypoints*
-de wxt (`src/entrypoints/`). En orden natural:
+| Hito | Antes | Ahora |
+|---|---|---|
+| S1 · fundamentos y build | parcial | **build instalable en 5 navegadores**; siguen faltando ESLint y CI |
+| S2 · contratos del kernel | completo | completo |
+| S3 · procedencia | completo | completo |
+| S4 · estilometría + content script | parcial | normalización lista; **falta el detector y la extracción del DOM** |
+| S5 · RuntimeHost, Workers, ORT | parcial | host y cableado completos; faltan Workers, ORT y ModelManager |
 
-1. `offscreen.html` + su `main.ts`, que instancia `startInferenceServer` con un
-   `Pipeline` real y registra los detectores de procedencia y estilometría.
-2. El service worker de background, dueño del `RuntimeHost`, sirviendo el canal
-   `analyze` a los content scripts.
-3. El content script: extracción de bloques, normalización y hash.
+## Lo siguiente
 
-Tier 0 (procedencia + estilometría) ya es TypeScript puro y no necesita ONNX,
-así que el primer veredicto de punta a punta es alcanzable antes de tocar los
-modelos.
+1. **Detector estilométrico Tier 0.** Es el que desbloquea cualquier veredicto
+   de texto. Necesita corpus para calibrar: sin él solo se pueden inventar
+   números, que es justo lo que el diseño prohíbe.
+2. **Extracción del DOM** en el content script: bloques visibles, sin
+   boilerplate, con las pistas de `domHints`.
+3. **Motor de overlay** en shadow root cerrado, sin mutar el DOM del anfitrión.

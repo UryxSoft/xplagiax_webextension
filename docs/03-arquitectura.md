@@ -299,6 +299,11 @@ esta categoría.
 | Distribución | CWS / Edge Add-ons / Opera | AMO | App Store, requiere app contenedora macOS/iOS + Apple Developer Program |
 | Revisión | Automática + manual | Manual para código ofuscado | Revisión de App Store |
 
+**Nota de implementación.** `manifestVersion: 3` está fijado explícitamente en `wxt.config.ts`. WXT
+todavía genera MV2 por defecto en Firefox y Safari, y aceptar ese valor produciría artefactos que
+contradicen esta tabla. Lo verifica el build: los cinco destinos salen como MV3, con
+`background.scripts` en Firefox y `service_worker` en el resto.
+
 Consecuencias asumidas:
 
 1. **Safari es el más caro** y no comparte pipeline de publicación. Va en V1.5, no en el MVP.
