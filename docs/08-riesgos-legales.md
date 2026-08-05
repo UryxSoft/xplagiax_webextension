@@ -69,7 +69,7 @@ Lo que sí aplica:
 
 ## 3. Protección de datos
 
-### 3.1 RGPD y equivalentes
+### 3.1 Marco general
 
 Por diseño, el procesamiento es local y no hay transferencia de contenido. En el análisis
 estándar, **no somos responsables del tratamiento del contenido analizado**: nunca lo recibimos.
@@ -88,23 +88,46 @@ evaluación de impacto (DPIA) para la telemetría y para cualquier función de a
 política de privacidad específica de la extensión, y representante en la UE si la entidad
 responsable es extracomunitaria.
 
-**Punto abierto sobre la entidad.** El responsable del tratamiento es **XplagiaX LTD**. La
-terminación "LTD" apunta a una constitución en Reino Unido o Irlanda, con consecuencias distintas
-y relevantes: una entidad irlandesa está dentro de la UE y no necesita representante del artículo
-27 del RGPD; una entidad británica está fuera desde el Brexit, se rige por el UK GDPR y **sí
-necesita representante en la UE** para dirigirse al mercado europeo. Se requiere confirmar la
-jurisdicción de constitución antes de redactar la política de privacidad, porque determina el
-régimen aplicable, la autoridad de control competente y el régimen de transferencias
-internacionales.
+### 3.2 Entidad responsable: XplagiaX LTD, Canadá
 
-### 3.2 La trampa de la anonimización
+El responsable del tratamiento es **XplagiaX LTD** ([xplagiax.ca](https://xplagiax.ca)), entidad
+canadiense. Eso fija tres marcos simultáneos:
+
+**PIPEDA (federal).** Es la ley aplicable por defecto a la actividad comercial. Cuenta con
+**decisión de adecuación de la UE**, confirmada y vigente, lo cual es una ventaja competitiva
+concreta: las transferencias de datos personales desde la UE hacia la entidad canadiense no
+requieren cláusulas contractuales tipo ni evaluación de impacto de transferencia. Simplifica de
+forma sustancial la venta a clientes europeos frente a un competidor estadounidense.
+
+Matiz importante: **la adecuación cubre únicamente a organizaciones privadas del sector comercial
+sujetas a PIPEDA.** No cubre el sector público provincial, los datos de empleados de entidades
+reguladas provincialmente, ni los tratamientos sujetos a la Ley 25 de Quebec.
+
+**Ley 25 de Quebec.** Si hay establecimiento, empleados o clientes en Quebec, aplica y es más
+estricta que PIPEDA: evaluaciones de impacto obligatorias, consentimiento reforzado, notificación
+de brechas en 72 horas, y un techo sancionador de 25 M CAD o el 4 % de la facturación mundial —
+el mismo orden de magnitud que el RGPD. **Se requiere confirmar la provincia de constitución y de
+operación**, porque determina si este régimen aplica.
+
+**RGPD, por dirigirse al mercado europeo.** La adecuación resuelve las transferencias, **no exime
+del artículo 27**: una entidad sin establecimiento en la UE que ofrece servicios a interesados en
+la UE necesita designar representante en la Unión, salvo que resulte aplicable la excepción de
+tratamiento ocasional y de bajo riesgo. Dado que la extensión se distribuye a usuarios europeos de
+forma continuada, la posición prudente es **designar representante**. Requiere confirmación por
+abogado.
+
+**Puntos a confirmar antes de redactar la política de privacidad:** provincia de constitución;
+si hay presencia en Quebec; designación de representante del artículo 27; y designación de
+responsable de privacidad, que PIPEDA exige de forma expresa.
+
+### 3.3 La trampa de la anonimización
 
 Un identificador de instalación estable convierte la telemetría en datos personales por vía de
 reidentificación. Un dominio hasheado es reversible por fuerza bruta contra una lista de dominios
 conocidos. Ambas cosas están explícitamente prohibidas en el esquema de telemetría, con test en
 CI que falla si un campo prohibido aparece.
 
-### 3.3 Aprendizaje federado
+### 3.4 Aprendizaje federado
 
 La función propuesta en el brief es el mayor riesgo de privacidad del roadmap. Los gradientes
 pueden filtrar el contenido de entrenamiento, y hay literatura amplia de ataques de inversión.
@@ -140,6 +163,7 @@ la propia interfaz, no solo en el contrato.
 | Componente | Licencia | Implicación |
 |---|---|---|
 | `distil-ai-slop-detector` | Apache-2.0 | Permisiva. Requiere atribución y aviso de cambios |
+| **`v81d/extinction`** | **GPL-3.0+** | **Copyleft fuerte. Incorporar su código obligaría a licenciar XplagiaX entero bajo GPL-3.0 e invalidaría el SDK comercial. Ver [ADR-010](./adr/ADR-010-extinction-gpl.md)** |
 | Pesos Gemma 3 | Términos de uso de Gemma (Google) | **Verificar restricciones de uso comercial y de redistribución.** No es una licencia OSS estándar |
 | wllama / llama.cpp | MIT | Permisiva |
 | ONNX Runtime Web | MIT | Permisiva |
@@ -148,9 +172,14 @@ la propia interfaz, no solo en el contrato.
 
 **Acción bloqueante antes de escribir código.** Auditoría de licencias completa, con atención
 especial a: (a) los términos de Gemma para redistribución de pesos derivados en un producto
-comercial, y (b) la procedencia y licencia de todo dataset usado para entrenar o calibrar. Un
-error aquí contamina el producto entero y se descubre en la due diligence de la ronda, que es el
-peor momento posible.
+comercial, (b) la procedencia y licencia de todo dataset usado para entrenar o calibrar, y (c) el
+procedimiento de implementación limpia del detector estilométrico frente a la GPL-3.0 de
+Extinction. Un error aquí contamina el producto entero y se descubre en la due diligence de la
+ronda, que es el peor momento posible.
+
+El caso de Extinction ilustra por qué esta auditoría va primero y no después: es un proyecto que
+el brief daba por integrable y cuya licencia, de haberse descubierto en la semana 8, habría
+obligado a elegir entre reescribir o renunciar al modelo de negocio del SDK.
 
 Auditoría automatizada de licencias en CI desde el primer commit.
 
@@ -211,3 +240,8 @@ posterior.
 - [What constitutes a Deep Fake? (arXiv:2412.09961)](https://arxiv.org/pdf/2412.09961)
 - [The Problem with False Positives: AI Detection Unfairly Accuses Scholars](https://www.tandfonline.com/doi/abs/10.1080/0361526X.2024.2433256)
 - [distil-labs/distil-ai-slop-detector — licencia Apache-2.0](https://github.com/distil-labs/distil-ai-slop-detector)
+- [v81d/extinction — licencia GPL-3.0+](https://github.com/v81d/extinction)
+- [EU confirms PIPEDA's adequacy status under the GDPR](https://davidyounglaw.ca/compliance-bulletins/eu-confirms-pipedas-adequacy-status-under-the-gdpr/)
+- [Quebec Law No. 25: a little-known privacy law with a big reach — BCLP](https://www.bclplaw.com/en-US/events-insights-news/quebec-law-no-25-a-little-known-privacy-law-with-a-big-reach.html)
+- [What Is Quebec's Law 25? — Osano](https://www.osano.com/articles/quebec-law-25)
+- [PIPEDA vs GDPR: Understanding the Key Differences in 2026](https://www.dpo-consulting.com/blog/pipeda-vs-gdpr)

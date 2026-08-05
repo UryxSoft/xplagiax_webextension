@@ -32,6 +32,13 @@ cual choca con un monorepo cuyo centro de gravedad es un kernel sin interfaz.
 **Configuración propia con Vite/Rollup.** Máximo control. También significa mantener nosotros lo
 que WXT ya mantiene, en un área que no es nuestra ventaja competitiva.
 
+## Validación externa
+
+[`v81d/extinction`](https://github.com/v81d/extinction), una extensión de detección de contenido
+generado con el mismo objetivo de cobertura (Chromium, Firefox y Safari), llegó de forma
+independiente a la misma elección: TypeScript sobre WXT con pnpm. No prueba que sea la única
+opción válida, pero sí que resuelve este problema concreto en producción.
+
 ## Consecuencias
 
 ### Positivas

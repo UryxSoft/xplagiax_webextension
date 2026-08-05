@@ -69,7 +69,7 @@ antes de saber si la gente vuelve es optimizar la métrica equivocada.
 
 | Semana | Entregable | Criterio de salida |
 |---|---|---|
-| **0** | Bloqueantes legales: auditoría de licencias, dictamen sobre términos de Gemma, revisión del lenguaje de la interfaz | Dictamen escrito. Sin esto no se escribe código |
+| **0** | Bloqueantes legales: auditoría de licencias, dictamen sobre términos de Gemma **y sobre el procedimiento de sala limpia frente a la GPL-3.0 de Extinction**, revisión del lenguaje de la interfaz | Dictamen escrito. Sin esto no se escribe código |
 | **1** | Monorepo, TS estricto, ESLint con fronteras, CI, WXT, esqueleto de las 5 superficies | `pnpm build` produce extensión instalable; CI verde |
 | **2** | Contratos del kernel: `Evidence`, `Detector`, registro, fusión, bandas, abstención | Kernel al 100 % testeado sin navegador |
 | **3** | Detector de procedencia (C2PA, IPTC, EXIF, PNG) | Corpus de 200 imágenes con y sin credenciales clasificado correctamente |

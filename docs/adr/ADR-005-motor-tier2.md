@@ -60,14 +60,20 @@ harían el producto inaceptable para el usuario mediano.
 **Solo Tier 1, sin Tier 2.** Rechazada: hay casos —periodismo, peritaje— donde el usuario acepta
 esperar dos segundos a cambio de una segunda opinión independiente.
 
-## Nota sobre "Extinction"
+## Nota sobre Extinction
 
-El brief menciona un proyecto llamado *Extinction* como segundo motor. No se localiza un proyecto
-público identificable con ese nombre en detección de texto generado. La ranura arquitectónica del
-segundo motor existe y está diseñada; el candidato preferente para ocuparla es un detector
-zero-shot por perplejidad, precisamente porque maximiza la independencia respecto del clasificador
-supervisado de Tier 1. Si *Extinction* es una referencia concreta, se pide confirmarla y se evalúa
-en el mismo banco de pruebas.
+El brief propone [`v81d/extinction`](https://github.com/v81d/extinction) como segundo motor de
+texto. Al examinarlo resulta que **no es un motor de ML**: es heurístico puro (regex ponderadas,
+Type-Token Ratio, burstiness, normalización sigmoide), sin modelos ni descargas.
+
+Por tanto **no ocupa la ranura de Tier 2**, sino la del detector `stylometry` de Tier 0. Su
+licencia GPL-3.0 impide además integrar su código; el tratamiento completo está en
+[ADR-010](./ADR-010-extinction-gpl.md).
+
+La ranura de Tier 2 sigue decidiéndose entre los tres candidatos de esta ADR. Extinction sí
+refuerza indirectamente el criterio 4: al ser un detector no-ML en Tier 0, ya aporta una fuente de
+error muy poco correlacionada con el transformer de Tier 1, lo que eleva el listón que debe
+superar un candidato de Tier 2 para justificar sus 242 MB.
 
 ## Consecuencias
 

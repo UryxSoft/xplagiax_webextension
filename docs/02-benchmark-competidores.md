@@ -67,25 +67,46 @@ multi-navegador. Se usan como **motores** dentro de XplagiaX, con atribución y 
 licencia (Apache-2.0 en el caso de distil-labs). Competir con ellos sería un error de encuadre;
 integrarlos y superarlos en la capa de plataforma es el movimiento correcto.
 
-### 3.4 Nota sobre "Extinction"
+### 3.4 Extinction — no es lo que parecía, y es mejor de lo que parecía
 
-El brief menciona un proyecto llamado *Extinction* como segundo motor de texto. La búsqueda no
-localiza un proyecto público identificable con ese nombre en el ámbito de detección de texto IA.
-Puede tratarse de un nombre interno, un proyecto privado o una confusión de nomenclatura.
+[`v81d/extinction`](https://github.com/v81d/extinction) resulta ser un proyecto distinto del que
+el brief daba a entender. No es un segundo motor de ML: **no usa modelos en absoluto**.
 
-**Esto no bloquea la arquitectura.** El requisito real detrás de la petición — un segundo motor
-independiente que actúe como segunda opinión y reduzca falsos positivos — está satisfecho por
-diseño: el `DetectorRegistry` acepta N detectores y la fusión de evidencia está construida para
-combinarlos. Los candidatos concretos para ese segundo motor, listados por preferencia:
+| Aspecto | Realidad |
+|---|---|
+| Método | Heurístico puro: regex ponderadas + Type-Token Ratio + burstiness + sigmoide |
+| Modelos | Ninguno. Cero descarga, cero inferencia |
+| Stack | TypeScript, Vue, Vite, Tailwind, **WXT** |
+| Navegadores | Chromium, Firefox, Safari |
+| Precisión declarada | ~80–90 % en texto humano, ~80 % en texto IA. Umbral por defecto 0,65 |
+| Licencia | **GPL-3.0+** |
 
-1. Un detector zero-shot por perplejidad (Fast-DetectGPT o Binoculars) — **máxima independencia
-   respecto del clasificador supervisado de Tier 1**, que es exactamente lo que reduce el error
-   correlacionado.
-2. Un ensemble clásico de features estilométricas (coste casi nulo, útil como Tier 0 reforzado).
-3. `Open-Detector` (BERT) para el vertical académico.
+Tres consecuencias, en orden de importancia:
 
-Se pide al solicitante que confirme la referencia exacta de *Extinction* si existe; mientras
-tanto, la ranura está diseñada y ocupada por la opción 1.
+**1 · La licencia es un problema serio.** GPL-3.0 es copyleft fuerte. Incorporar su código
+obligaría a publicar XplagiaX entero bajo GPL-3.0, lo que destruye el modelo de licencia comercial
+del SDK descrito en [`10-monetizacion.md`](./10-monetizacion.md#3-api-y-sdk). Es la diferencia
+entre un activo y un pasivo, y se resuelve en [ADR-010](./adr/ADR-010-extinction-gpl.md).
+
+**2 · Su sitio en la arquitectura es Tier 0, no Tier 2.** Al ser heurístico y sin modelos, su
+coste es de milisegundos y funciona sin descargar nada. Encaja exactamente en el detector
+`stylometry` de Tier 0, no en la ranura de segunda opinión pesada. Eso lo hace **más** útil de lo
+previsto: aporta señal antes de cargar ningún modelo.
+
+**3 · Su independencia estadística es su mayor valor.** Un detector basado en regex y métricas
+léxicas se equivoca en casos distintos de los que falla un transformer. Es justo lo que pide el
+criterio de decorrelación de [ADR-006](./adr/ADR-006-evidencia-llr.md): un segundo motor que
+falla igual que el primero no aporta nada; uno que falla distinto reduce falsos positivos de
+verdad.
+
+La contrapartida: ~80 % de precisión está muy por debajo del objetivo de FPR ≤ 1 %. **No puede
+emitir veredictos por sí solo.** Entra como una fuente de evidencia más, con su LLR calibrado y
+su `reliability`, nunca como decisor. Sus propios autores reconocen que un método basado en regex
+no puede igualar a uno basado en ML.
+
+**Validación externa de una decisión nuestra:** Extinction usa WXT para cubrir Chromium, Firefox
+y Safari — la misma elección de [ADR-002](./adr/ADR-002-framework-build.md), tomada de forma
+independiente para el mismo problema.
 
 ---
 
@@ -134,5 +155,6 @@ integrar el motor en su propio producto.
 - [GPTZero vs Turnitin: Comparing AI Detection in Education](https://www.eyesift.com/blog/gptzero-vs-turnitin/)
 - [C2PA vs Deepfake Detection: Key Differences](https://www.paladintech.ai/blogs/c2pa-vs-deepfake-detection-guide)
 - [Deepfakes vs. Provenance: Why C2PA Beats Detection](https://blog.pebblous.ai/blog/deepfake-detection-vs-provenance/en/)
+- [v81d/extinction](https://github.com/v81d/extinction)
 - [Ensemble-AI-Text-Detection](https://github.com/iamjr15/Ensemble-AI-Text-Detection) · [Open-Detector](https://github.com/Imalwayshere/Open-Detector)
 - [MOSAIC: Multiple Observers Spotting AI Content (arXiv:2409.07615)](https://arxiv.org/pdf/2409.07615)

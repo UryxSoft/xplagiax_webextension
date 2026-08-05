@@ -30,7 +30,7 @@ xplagiax/
 │   │   └── policy/          #   Motor de reglas (umbrales, dominios, acciones)
 │   ├── detectors/
 │   │   ├── provenance/      # C2PA, IPTC, EXIF, chunks PNG  → Tier 0
-│   │   ├── stylometry/      # Heurísticas de texto sin ML   → Tier 0
+│   │   ├── stylometry/      # Heurísticas sin ML (ADR-010)  → Tier 0
 │   │   ├── text-onnx/       # Clasificador destilado ONNX   → Tier 1
 │   │   ├── image-onnx/      # Clasificador + saliencia      → Tier 1
 │   │   └── text-llm/        # Gemma-270M / perplejidad      → Tier 2

@@ -15,6 +15,7 @@ no se evaluó de verdad.
 | [007](./ADR-007-abstencion.md) | La abstención es un estado de primera clase | Propuesto |
 | [008](./ADR-008-overlay-no-destructivo.md) | Overlay sin mutar el DOM del host | Propuesto |
 | [009](./ADR-009-permisos-progresivos.md) | Sin `host_permissions` en la instalación | Propuesto |
+| [010](./ADR-010-extinction-gpl.md) | Extinction: reimplementación limpia por la GPL-3.0 | Propuesto |
 
 Todas están en estado **Propuesto**. Pasan a **Aceptado** cuando el solicitante valide la
 arquitectura, que es la condición que el propio brief impone antes de escribir código.

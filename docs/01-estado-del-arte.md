@@ -15,6 +15,7 @@ condiciona se ha omitido deliberadamente.
 | **Clasificador supervisado** | Turnitin, GPTZero, `Open-Detector` (BERT), Gemma-270M destilado | Fine-tuning binario humano/IA | Rápido, pequeño, desplegable | Se degrada fuera de su distribución; sesgo hacia texto "simple" |
 | **Zero-shot por perplejidad** | DetectGPT, Fast-DetectGPT, Binoculars | Compara señales estadísticas del propio LM | No requiere datos de entrenamiento, generaliza mejor entre dominios | Necesita uno o dos LM cargados; caro en navegador |
 | **Ensemble clásico** | NB + LogReg + LightGBM + CatBoost con soft-voting | Voto probabilístico sobre features | Muy barato, interpretable | Techo de exactitud bajo; frágil ante paráfrasis |
+| **Heurístico / estilométrico** | `v81d/extinction` | Regex ponderadas + TTR + burstiness + sigmoide | Coste de milisegundos, sin modelos, muy independiente del ML | Techo ~80 %; penaliza escritura formal y regular |
 | **Marca de agua** | SynthID (Google), esquemas de watermarking en decodificación | El generador inserta señal | Precisión altísima *si* está presente | Solo cubre a generadores que cooperan; se destruye al parafrasear |
 | **Procedencia criptográfica** | C2PA / Content Credentials | Firma la historia del archivo | Evidencia dura, verificable | Se rompe al recodificar; cobertura parcial |
 
@@ -142,6 +143,12 @@ Señales de coste cero que Tier 0 puede leer antes de cargar un solo modelo:
 Estas señales son baratas, no requieren ML, y en una fracción relevante de casos resuelven la
 pregunta con evidencia dura. Ningún competidor las prioriza. Es la parte del producto con mejor
 relación valor/coste y la primera que se construye.
+
+A ellas se suma la **estilometría sin ML** —diversidad léxica, varianza de longitud de frase,
+patrones de expresión recurrentes— que Extinction demuestra viable en producción a coste de
+milisegundos. Con un techo de precisión en torno al 80 %, no basta para decidir; como fuente de
+evidencia independiente del transformer, vale mucho. Ver
+[ADR-010](./adr/ADR-010-extinction-gpl.md).
 
 ---
 

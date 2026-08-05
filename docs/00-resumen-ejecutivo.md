@@ -116,6 +116,12 @@ un solo modelo y es dos órdenes de magnitud más rápido que DetectGPT. Ambos s
 válidos para Tier 2; la elección se resuelve con el banco de pruebas descrito en
 [`14-criterios-de-exito.md`](./14-criterios-de-exito.md).
 
+Tier 0 incorpora además **estilometría sin ML**, siguiendo el método publicado por Extinction
+(regex ponderadas, Type-Token Ratio, burstiness, sigmoide). Su código no se reutiliza: es
+GPL-3.0 y contagiaría todo el producto, lo que invalidaría el SDK comercial. Se reimplementa desde
+el método documentado con procedimiento de sala limpia
+([ADR-010](./adr/ADR-010-extinction-gpl.md)).
+
 ---
 
 ## 6. Qué construimos primero
