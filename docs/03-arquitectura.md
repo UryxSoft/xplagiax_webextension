@@ -360,7 +360,10 @@ con validación en ambos extremos.
 
 - El content script es **no privilegiado**: no puede pedir inferencia arbitraria ni leer el
   historial. Solo puede enviar contenido normalizado del documento en el que vive y recibir
-  veredictos para ese documento.
+  veredictos para ese documento. La regla se impone en `startInferenceServer`, que rechaza y
+  desconecta cualquier puerto cuyo `sender.tab` esté presente. No basta con `runtime.onConnect`:
+  un content script puede invocar `runtime.connect` igual que el background, así que si la
+  separación no se comprueba ahí, no existe.
 - Todo mensaje entrante se valida antes de tocar lógica de negocio. Una página hostil puede
   intentar hablar con nuestro content script.
 - Los canales llevan versión; una versión incompatible degrada en lugar de fallar.
