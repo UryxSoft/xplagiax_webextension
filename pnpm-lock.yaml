@@ -23,6 +23,9 @@ importers:
       '@xpx/extinction-validator':
         specifier: workspace:*
         version: link:../../packages/detectors/extinction-validator
+      '@xpx/ipc':
+        specifier: workspace:*
+        version: link:../../packages/ipc
       '@xpx/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
@@ -45,6 +48,8 @@ importers:
       '@xpx/kernel':
         specifier: workspace:*
         version: link:../../kernel
+
+  packages/ipc: {}
 
   packages/kernel: {}
 

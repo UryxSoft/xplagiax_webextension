@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@xpx/extinction-validator": "workspace:*",
+    "@xpx/ipc": "workspace:*",
     "@xpx/kernel": "workspace:*",
     "@xpx/provenance": "workspace:*"
   },

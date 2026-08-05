@@ -1,0 +1,1833 @@
+From c08a3d2a07df2984a502a707f994e4fa999e4dfc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 5 Aug 2026 17:20:22 +0000
+Subject: [PATCH] feat: IPC tipado y host de inferencia offscreen en Chromium
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Desbloquea el análisis de texto: hasta ahora el ChromiumRuntimeHost era un
+stub que lanzaba "Pendiente".
+
+@xpx/ipc — RPC tipado sobre un Transport abstracto, sin dependencias.
+
+  Validación en ambos extremos con predicados de tipo en lugar de Zod o
+  Valibot: este paquete corre también en el content script, donde el
+  presupuesto es de 15 KB gzip. Cada canal declara su validador junto al
+  manejador, así que no hay forma de registrar una ruta sin decir qué acepta.
+
+  Los errores internos se sanean antes de salir. El content script vive en la
+  página del usuario y un mensaje de excepción puede contener rutas o
+  contenido; solo un IpcError explícito viaja con su texto intacto.
+
+  Temporizadores y señales de cancelación se inyectan (env.ts) en vez de
+  tomarse del global, porque el paquete compila sin lib DOM para poder correr
+  en Node. Efecto lateral: los tests controlan el tiempo sin trucos.
+
+ChromiumRuntimeHost — documento offscreen, que es el único contexto con vida
+larga, sin DOM visible y con aislamiento para WASM con hilos.
+
+  Resuelve dos problemas de ciclo de vida de MV3. La carrera de arranque: el
+  service worker muere y revive, varias llamadas concurrentes intentan crear
+  el documento a la vez, y createDocument falla si ya existe de forma
+  indistinguible de un error real. Y la caída del puerto: cuando el navegador
+  reclama el documento, el host se marca no listo y la siguiente llamada
+  reconstruye documento y puerto en lugar de escribir en un canal muerto.
+
+  RuntimeHost.run exige ahora un validador. El resultado cruza una frontera de
+  proceso; aceptarlo sin comprobar convertiría TRes en una promesa que nadie
+  cumple.
+
+detectPlatform recibe el user-agent por parámetro. Leerlo del global lo hacía
+imposible de probar: navigator es de solo lectura en Node.
+
+Arreglo aparte, previo a este trabajo: el typecheck de los detectores fallaba
+en un checkout limpio. Usan project references pero corrían con `tsc -p`, que
+no construye las declaraciones del kernel. Pasan a `tsc --build`.
+
+165 tests en verde; typecheck limpio en los 5 paquetes.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019JgVhHV49i88zeV67T8rrU
+---
+ apps/extension/package.json                   |   1 +
+ apps/extension/src/platform/chromium-host.ts  | 172 ++++++++
+ apps/extension/src/platform/extension-api.ts  |  62 +++
+ apps/extension/src/platform/port-transport.ts |  36 ++
+ apps/extension/src/platform/runtime-host.ts   |  76 ++--
+ apps/extension/test/chromium-host.test.ts     | 387 ++++++++++++++++++
+ apps/extension/tsconfig.json                  |  16 +
+ docs/03-arquitectura.md                       |  18 +-
+ .../extinction-validator/package.json         |   3 +-
+ packages/detectors/provenance/package.json    |   3 +-
+ packages/ipc/package.json                     |  20 +
+ packages/ipc/src/env.ts                       |  34 ++
+ packages/ipc/src/index.ts                     |  16 +
+ packages/ipc/src/protocol.ts                  |  98 +++++
+ packages/ipc/src/rpc.ts                       | 291 +++++++++++++
+ packages/ipc/test/rpc.test.ts                 | 293 +++++++++++++
+ packages/ipc/tsconfig.json                    |  13 +
+ pnpm-lock.yaml                                |   5 +
+ vitest.config.ts                              |   1 +
+ 19 files changed, 1513 insertions(+), 32 deletions(-)
+ create mode 100644 apps/extension/src/platform/chromium-host.ts
+ create mode 100644 apps/extension/src/platform/extension-api.ts
+ create mode 100644 apps/extension/src/platform/port-transport.ts
+ create mode 100644 apps/extension/test/chromium-host.test.ts
+ create mode 100644 apps/extension/tsconfig.json
+ create mode 100644 packages/ipc/package.json
+ create mode 100644 packages/ipc/src/env.ts
+ create mode 100644 packages/ipc/src/index.ts
+ create mode 100644 packages/ipc/src/protocol.ts
+ create mode 100644 packages/ipc/src/rpc.ts
+ create mode 100644 packages/ipc/test/rpc.test.ts
+ create mode 100644 packages/ipc/tsconfig.json
+
+diff --git a/apps/extension/package.json b/apps/extension/package.json
+index 9370b3d..c703c55 100644
+--- a/apps/extension/package.json
++++ b/apps/extension/package.json
+@@ -18,6 +18,7 @@
+   },
+   "dependencies": {
+     "@xpx/extinction-validator": "workspace:*",
++    "@xpx/ipc": "workspace:*",
+     "@xpx/kernel": "workspace:*",
+     "@xpx/provenance": "workspace:*"
+   },
+diff --git a/apps/extension/src/platform/chromium-host.ts b/apps/extension/src/platform/chromium-host.ts
+new file mode 100644
+index 0000000..e8c9f21
+--- /dev/null
++++ b/apps/extension/src/platform/chromium-host.ts
+@@ -0,0 +1,172 @@
++import { RpcClient } from '@xpx/ipc';
++import type { AbortLike, Channel, Validator } from '@xpx/ipc';
++import type { ExtensionApi, PortLike } from './extension-api.js';
++import { portTransport } from './port-transport.js';
++import type { RuntimeHost } from './runtime-host.js';
++
++/**
++ * Host de inferencia en Chromium (Chrome, Edge, Opera).
++ *
++ * Usa un documento offscreen porque es el único contexto de la extensión que
++ * cumple las tres condiciones a la vez: vida larga, sin DOM visible y
++ * aislamiento adecuado para WebAssembly con hilos. El service worker de MV3 no
++ * sirve —se duerme, y perdería el modelo cargado en cada siesta— y el content
++ * script está descartado por arquitectura: la inferencia jamás corre en la
++ * página del usuario.
++ *
++ * Los dos problemas reales que resuelve esta clase son de ciclo de vida:
++ *
++ * 1. **La carrera de arranque.** El service worker muere y revive
++ *    constantemente, así que varias llamadas concurrentes pueden intentar crear
++ *    el documento a la vez. `createDocument` falla si ya existe, y ese fallo es
++ *    indistinguible de uno real si no se gestiona. La promesa de arranque se
++ *    comparte para que solo haya un intento en vuelo.
++ *
++ * 2. **La caída del puerto.** Cuando el documento se cierra —por `teardown`, o
++ *    porque el navegador lo reclama— el puerto muere con él. El host lo detecta
++ *    y se marca como no listo, de modo que la siguiente llamada reconstruye
++ *    documento y puerto en lugar de escribir sobre un canal muerto.
++ */
++
++export const OFFSCREEN_PATH = 'offscreen.html';
++export const OFFSCREEN_PORT = 'xpx-inference';
++
++export interface ChromiumHostOptions {
++  readonly api: ExtensionApi;
++}
++
++export class ChromiumRuntimeHost implements RuntimeHost {
++  readonly platform = 'chromium' as const;
++
++  readonly #api: ExtensionApi;
++  #starting: Promise<void> | undefined;
++  #ready = false;
++  #port: PortLike | undefined;
++  #client: RpcClient | undefined;
++
++  constructor(opts: ChromiumHostOptions) {
++    this.#api = opts.api;
++  }
++
++  get isReady(): boolean {
++    return this.#ready;
++  }
++
++  async ensure(): Promise<void> {
++    if (this.#ready) return;
++    // Varias llamadas concurrentes comparten el mismo arranque. Sin esto, dos
++    // peticiones simultáneas tras despertar el service worker producirían dos
++    // `createDocument` y la segunda fallaría.
++    this.#starting ??= this.#start().finally(() => {
++      this.#starting = undefined;
++    });
++    await this.#starting;
++  }
++
++  async run<TReq, TRes>(
++    channel: Channel,
++    payload: TReq,
++    validate: Validator<TRes>,
++    signal?: AbortLike,
++  ): Promise<TRes> {
++    await this.ensure();
++    return this.#connection().request(channel, payload, validate, signal);
++  }
++
++  async teardown(): Promise<void> {
++    this.#reset();
++
++    const offscreen = this.#api.offscreen;
++    if (offscreen === undefined) return;
++    if (!(await this.#documentExists())) return;
++    try {
++      await offscreen.closeDocument();
++    } catch {
++      // Cerrar algo que ya no está no es un error que deba propagarse.
++    }
++  }
++
++  async #start(): Promise<void> {
++    const offscreen = this.#api.offscreen;
++    if (offscreen === undefined) {
++      throw new Error('chrome.offscreen no disponible: plataforma incorrecta');
++    }
++
++    if (await this.#documentExists()) {
++      this.#ready = true;
++      return;
++    }
++
++    try {
++      await offscreen.createDocument({
++        url: this.#api.runtime.getURL(OFFSCREEN_PATH),
++        reasons: ['WORKERS'],
++        justification:
++          'Ejecutar los modelos de detección en un contexto aislado, fuera de la página del usuario.',
++      });
++    } catch (err) {
++      // Otra invocación ganó la carrera: el documento ya existe, y eso es éxito,
++      // no fallo. Cualquier otro error sí se propaga.
++      if (!isAlreadyExistsError(err) && !(await this.#documentExists())) throw err;
++    }
++
++    this.#ready = true;
++  }
++
++  async #documentExists(): Promise<boolean> {
++    const { runtime, offscreen } = this.#api;
++    if (runtime.getContexts !== undefined) {
++      const contexts = await runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
++      return contexts.length > 0;
++    }
++    if (offscreen?.hasDocument !== undefined) return offscreen.hasDocument();
++    return false;
++  }
++
++  /** Puerto y cliente RPC, creados a demanda y reconstruidos si se caen. */
++  #connection(): RpcClient {
++    const existing = this.#client;
++    if (existing !== undefined) return existing;
++
++    const port = this.#api.runtime.connect({ name: OFFSCREEN_PORT });
++    const client = new RpcClient({ transport: portTransport(port) });
++
++    port.onDisconnect.addListener(() => {
++      // Solo si sigue siendo la conexión vigente: una desconexión tardía de un
++      // puerto ya reemplazado no debe tumbar el actual.
++      if (this.#client !== client) return;
++      this.#reset();
++    });
++
++    this.#port = port;
++    this.#client = client;
++    return client;
++  }
++
++  /**
++   * Deja el host como recién construido. `dispose` rechaza lo que quedara en
++   * vuelo, que es lo correcto: esas peticiones ya no tienen quien las conteste.
++   */
++  #reset(): void {
++    this.#ready = false;
++    this.#starting = undefined;
++    this.#client?.dispose();
++    this.#client = undefined;
++    try {
++      this.#port?.disconnect();
++    } catch {
++      // Ya estaba desconectado.
++    }
++    this.#port = undefined;
++  }
++}
++
++/**
++ * Chrome no expone un código de error para esto: solo el mensaje. Se reconoce
++ * por texto, y por eso el llamante vuelve a comprobar la existencia del
++ * documento en lugar de fiarse únicamente de esta heurística.
++ */
++function isAlreadyExistsError(err: unknown): boolean {
++  const message = err instanceof Error ? err.message : String(err);
++  return /only a single offscreen|already (exists|created)/i.test(message);
++}
+diff --git a/apps/extension/src/platform/extension-api.ts b/apps/extension/src/platform/extension-api.ts
+new file mode 100644
+index 0000000..e6e77a8
+--- /dev/null
++++ b/apps/extension/src/platform/extension-api.ts
+@@ -0,0 +1,62 @@
++/**
++ * La superficie EXACTA del navegador de la que depende la extensión.
++ *
++ * Declararla como interfaz en lugar de tocar `chrome.*` directamente tiene tres
++ * efectos que valen su coste: documenta la dependencia completa en un fichero,
++ * permite probar el ciclo de vida sin navegador, y obliga a que cualquier API
++ * nueva pase por una decisión consciente en vez de aparecer por conveniencia en
++ * mitad de un módulo.
++ *
++ * Si algo no está aquí, no se usa. Ver 03-arquitectura.md §5.
++ */
++
++/** Un puerto de `runtime.connect`. Es el canal duplex sobre el que va el RPC. */
++export interface PortLike {
++  postMessage(message: unknown): void;
++  disconnect(): void;
++  readonly onMessage: {
++    addListener(cb: (message: unknown) => void): void;
++    removeListener(cb: (message: unknown) => void): void;
++  };
++  readonly onDisconnect: {
++    addListener(cb: () => void): void;
++    removeListener(cb: () => void): void;
++  };
++}
++
++export interface OffscreenApi {
++  createDocument(opts: {
++    url: string;
++    reasons: readonly string[];
++    justification: string;
++  }): Promise<void>;
++  closeDocument(): Promise<void>;
++  /** Chrome < 116, antes de que existiera `runtime.getContexts`. */
++  hasDocument?(): Promise<boolean>;
++}
++
++export interface RuntimeApi {
++  getURL(path: string): string;
++  connect(info: { name: string }): PortLike;
++  /**
++   * Contextos vivos de la extensión. Es la forma fiable de saber si el
++   * documento offscreen sigue en pie tras haberse dormido el service worker.
++   */
++  getContexts?(filter: { contextTypes: readonly string[] }): Promise<readonly unknown[]>;
++}
++
++export interface ExtensionApi {
++  readonly runtime: RuntimeApi;
++  /** Solo en Chromium. Firefox y Safari no lo tienen: ver ADR-004 y §8. */
++  readonly offscreen?: OffscreenApi;
++}
++
++/** Lee la API global del navegador. Único punto donde se toca `chrome`. */
++export function systemExtensionApi(): ExtensionApi {
++  const g = globalThis as unknown as { chrome?: ExtensionApi; browser?: ExtensionApi };
++  const api = g.chrome ?? g.browser;
++  if (api === undefined) {
++    throw new Error('sin API de extensión disponible en este contexto');
++  }
++  return api;
++}
+diff --git a/apps/extension/src/platform/port-transport.ts b/apps/extension/src/platform/port-transport.ts
+new file mode 100644
+index 0000000..94753e2
+--- /dev/null
++++ b/apps/extension/src/platform/port-transport.ts
+@@ -0,0 +1,36 @@
++import type { Transport } from '@xpx/ipc';
++import type { PortLike } from './extension-api.js';
++
++/**
++ * Adapta un puerto del navegador al `Transport` de `@xpx/ipc`.
++ *
++ * Es deliberadamente la única traducción entre ambos mundos: a un lado la API
++ * del navegador, al otro un RPC que no sabe qué es una extensión. Todo lo que
++ * el protocolo necesita saber del puerto cabe en estas dos operaciones.
++ *
++ * `postMessage` sobre un puerto ya desconectado lanza en Chrome. Se traga aquí
++ * porque el cliente RPC ya tiene su propio mecanismo para peticiones sin
++ * respuesta —el tiempo de espera— y porque quien cierra el puerto es el
++ * navegador, no el llamante: no es un fallo del que informar hacia arriba.
++ */
++export function portTransport(port: PortLike): Transport {
++  return {
++    post: (message) => {
++      try {
++        port.postMessage(message);
++      } catch {
++        // Puerto caído. El cliente lo resolverá por tiempo de espera o por el
++        // manejador de desconexión, que es quien tiene el contexto para actuar.
++      }
++    },
++    subscribe: (listener) => {
++      const onMessage = (message: unknown): void => {
++        listener(message);
++      };
++      port.onMessage.addListener(onMessage);
++      return () => {
++        port.onMessage.removeListener(onMessage);
++      };
++    },
++  };
++}
+diff --git a/apps/extension/src/platform/runtime-host.ts b/apps/extension/src/platform/runtime-host.ts
+index cc56a41..28d2134 100644
+--- a/apps/extension/src/platform/runtime-host.ts
++++ b/apps/extension/src/platform/runtime-host.ts
+@@ -1,3 +1,8 @@
++import type { AbortLike, Channel, Validator } from '@xpx/ipc';
++import { ChromiumRuntimeHost } from './chromium-host.js';
++import { systemExtensionApi } from './extension-api.js';
++import type { ExtensionApi } from './extension-api.js';
++
+ /**
+  * El único lugar del sistema donde se permite código específico de navegador.
+  * Ver 03-arquitectura.md §5 y la matriz de compatibilidad en §8.
+@@ -14,37 +19,39 @@ export interface RuntimeHost {
+   readonly platform: Platform;
+   /** Prepara el contexto de larga vida donde viven los Workers de inferencia. */
+   ensure(): Promise<void>;
+-  /** Envía trabajo al host y espera el resultado. */
+-  run<TReq, TRes>(channel: string, payload: TReq): Promise<TRes>;
++  /**
++   * Envía trabajo al host y espera el resultado.
++   *
++   * El validador no es opcional a propósito: el resultado cruza una frontera de
++   * proceso, y aceptarlo sin comprobar convertiría `TRes` en una promesa que
++   * nadie cumple.
++   */
++  run<TReq, TRes>(
++    channel: Channel,
++    payload: TReq,
++    validate: Validator<TRes>,
++    signal?: AbortLike,
++  ): Promise<TRes>;
+   teardown(): Promise<void>;
+ }
+ 
+-export function detectPlatform(): Platform {
+-  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+-  if (ua.includes('Firefox')) return 'firefox';
++/**
++ * Identifica la plataforma a partir del user-agent.
++ *
++ * Se recibe por parámetro en lugar de leerlo del global: `navigator` es una
++ * propiedad de solo lectura en varios entornos, y una función que depende de un
++ * global inmutable no se puede probar sin trucos.
++ */
++export function detectPlatform(userAgent: string = readUserAgent()): Platform {
++  if (userAgent.includes('Firefox')) return 'firefox';
+   // Safari sin Chrome en el UA. Chromium (Chrome, Edge, Opera) comparte camino.
+-  if (ua.includes('Safari') && !ua.includes('Chrome')) return 'safari';
++  if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'safari';
+   return 'chromium';
+ }
+ 
+-/**
+- * Chromium (Chrome, Edge, Opera): documento offscreen, que es el único contexto
+- * con vida larga, sin DOM visible y con aislamiento adecuado para WASM.
+- */
+-export class ChromiumRuntimeHost implements RuntimeHost {
+-  readonly platform = 'chromium' as const;
+-
+-  async ensure(): Promise<void> {
+-    throw new Error('Pendiente: chrome.offscreen.createDocument');
+-  }
+-
+-  async run<TReq, TRes>(_channel: string, _payload: TReq): Promise<TRes> {
+-    throw new Error('Pendiente');
+-  }
+-
+-  async teardown(): Promise<void> {
+-    throw new Error('Pendiente: chrome.offscreen.closeDocument');
+-  }
++function readUserAgent(): string {
++  const nav = (globalThis as { navigator?: { userAgent?: string } }).navigator;
++  return nav?.userAgent ?? '';
+ }
+ 
+ /** Firefox: no tiene chrome.offscreen. Los Workers cuelgan de la event page. */
+@@ -53,7 +60,12 @@ export class FirefoxRuntimeHost implements RuntimeHost {
+   async ensure(): Promise<void> {
+     throw new Error('Pendiente: Worker desde la event page');
+   }
+-  async run<TReq, TRes>(_channel: string, _payload: TReq): Promise<TRes> {
++  async run<TReq, TRes>(
++    _channel: Channel,
++    _payload: TReq,
++    _validate: Validator<TRes>,
++    _signal?: AbortLike,
++  ): Promise<TRes> {
+     throw new Error('Pendiente');
+   }
+   async teardown(): Promise<void> {
+@@ -67,7 +79,12 @@ export class SafariRuntimeHost implements RuntimeHost {
+   async ensure(): Promise<void> {
+     throw new Error('Pendiente: página de extensión oculta');
+   }
+-  async run<TReq, TRes>(_channel: string, _payload: TReq): Promise<TRes> {
++  async run<TReq, TRes>(
++    _channel: Channel,
++    _payload: TReq,
++    _validate: Validator<TRes>,
++    _signal?: AbortLike,
++  ): Promise<TRes> {
+     throw new Error('Pendiente');
+   }
+   async teardown(): Promise<void> {
+@@ -75,13 +92,16 @@ export class SafariRuntimeHost implements RuntimeHost {
+   }
+ }
+ 
+-export function createRuntimeHost(platform = detectPlatform()): RuntimeHost {
++export function createRuntimeHost(
++  platform: Platform = detectPlatform(),
++  api?: ExtensionApi,
++): RuntimeHost {
+   switch (platform) {
+     case 'firefox':
+       return new FirefoxRuntimeHost();
+     case 'safari':
+       return new SafariRuntimeHost();
+     case 'chromium':
+-      return new ChromiumRuntimeHost();
++      return new ChromiumRuntimeHost({ api: api ?? systemExtensionApi() });
+   }
+ }
+diff --git a/apps/extension/test/chromium-host.test.ts b/apps/extension/test/chromium-host.test.ts
+new file mode 100644
+index 0000000..9477fa6
+--- /dev/null
++++ b/apps/extension/test/chromium-host.test.ts
+@@ -0,0 +1,387 @@
++import { describe, expect, it, vi } from 'vitest';
++import { RpcServer, ErrorCode } from '@xpx/ipc';
++import { ChromiumRuntimeHost, OFFSCREEN_PATH, OFFSCREEN_PORT } from '../src/platform/chromium-host.js';
++import { portTransport } from '../src/platform/port-transport.js';
++import type { ExtensionApi, OffscreenApi, PortLike } from '../src/platform/extension-api.js';
++import { createRuntimeHost, detectPlatform } from '../src/platform/runtime-host.js';
++
++/** Dos extremos de un puerto del navegador, con su desconexión. */
++function portPair(): { near: PortLike; far: PortLike; drop: () => void } {
++  const msg: { near: ((m: unknown) => void)[]; far: ((m: unknown) => void)[] } = {
++    near: [],
++    far: [],
++  };
++  const dis: { near: (() => void)[]; far: (() => void)[] } = { near: [], far: [] };
++  let alive = true;
++
++  const drop = (): void => {
++    if (!alive) return;
++    alive = false;
++    for (const cb of [...dis.near, ...dis.far]) cb();
++  };
++
++  const make = (self: 'near' | 'far', other: 'near' | 'far'): PortLike => ({
++    postMessage: (m) => {
++      // Chrome lanza al escribir en un puerto muerto. El transporte lo absorbe.
++      if (!alive) throw new Error('Attempting to use a disconnected port object');
++      queueMicrotask(() => {
++        for (const l of [...msg[other]]) l(m);
++      });
++    },
++    disconnect: drop,
++    onMessage: {
++      addListener: (cb) => {
++        msg[self].push(cb);
++      },
++      removeListener: (cb) => {
++        msg[self] = msg[self].filter((x) => x !== cb);
++      },
++    },
++    onDisconnect: {
++      addListener: (cb) => {
++        dis[self].push(cb);
++      },
++      removeListener: (cb) => {
++        dis[self] = dis[self].filter((x) => x !== cb);
++      },
++    },
++  });
++
++  return { near: make('near', 'far'), far: make('far', 'near'), drop };
++}
++
++interface InferReq {
++  readonly texto: string;
++}
++const isInferReq = (v: unknown): v is InferReq =>
++  typeof v === 'object' && v !== null && typeof (v as InferReq).texto === 'string';
++
++interface InferRes {
++  readonly eco: string;
++  readonly puerto: string;
++}
++const isInferRes = (v: unknown): v is InferRes =>
++  typeof v === 'object' && v !== null && typeof (v as InferRes).eco === 'string';
++
++/**
++ * Doble de la API de Chrome que reproduce el comportamiento que importa: que
++ * `createDocument` falle cuando ya hay un documento, que es la fuente de la
++ * carrera de arranque en MV3. Al otro lado de cada puerto vive un `RpcServer`
++ * que hace de documento offscreen.
++ */
++function fakeApi(opts: { supportsGetContexts?: boolean; startsWithDocument?: boolean } = {}) {
++  let exists = opts.startsWithDocument ?? false;
++  const calls = { create: 0, close: 0, getContexts: 0, connect: 0 };
++  const puertos: { drop: () => void }[] = [];
++
++  const api: ExtensionApi = {
++    runtime: {
++      getURL: (p) => `chrome-extension://fake/${p}`,
++      connect: (info) => {
++        calls.connect += 1;
++        const par = portPair();
++        new RpcServer(portTransport(par.far)).on('infer', isInferReq, (p) => ({
++          eco: p.texto,
++          puerto: info.name,
++        }));
++        puertos.push({ drop: par.drop });
++        return par.near;
++      },
++      ...(opts.supportsGetContexts !== false
++        ? {
++            getContexts: async () => {
++              calls.getContexts += 1;
++              return exists ? [{}] : [];
++            },
++          }
++        : {}),
++    },
++    offscreen: {
++      createDocument: async () => {
++        calls.create += 1;
++        // Un microtick antes de comprobar: así dos llamadas concurrentes se
++        // solapan de verdad, como en el navegador.
++        await Promise.resolve();
++        if (exists) throw new Error('Only a single offscreen document may be created.');
++        exists = true;
++      },
++      closeDocument: async () => {
++        calls.close += 1;
++        if (!exists) throw new Error('No offscreen document to close.');
++        exists = false;
++      },
++      ...(opts.supportsGetContexts === false ? { hasDocument: async () => exists } : {}),
++    },
++  };
++
++  return {
++    api,
++    calls,
++    puertos,
++    get exists() {
++      return exists;
++    },
++  };
++}
++
++function offscreenOf(api: ExtensionApi): OffscreenApi {
++  const offscreen = api.offscreen;
++  if (offscreen === undefined) throw new Error('el doble debe exponer offscreen');
++  return offscreen;
++}
++
++function replaceCreate(api: ExtensionApi, fn: OffscreenApi['createDocument']): void {
++  (offscreenOf(api) as { createDocument: OffscreenApi['createDocument'] }).createDocument = fn;
++}
++
++/** Vacía la cola de microtareas, no solo un tick. */
++const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
++
++describe('ChromiumRuntimeHost · ciclo de vida del documento offscreen', () => {
++  it('crea el documento en la primera llamada', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await host.ensure();
++    expect(f.calls.create).toBe(1);
++    expect(f.exists).toBe(true);
++    expect(host.isReady).toBe(true);
++  });
++
++  it('no vuelve a crearlo si ya está listo', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await host.ensure();
++    await host.ensure();
++    await host.ensure();
++    expect(f.calls.create).toBe(1);
++  });
++
++  it('reutiliza un documento que ya existía al arrancar', async () => {
++    const f = fakeApi({ startsWithDocument: true });
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await host.ensure();
++    expect(f.calls.create).toBe(0);
++    expect(host.isReady).toBe(true);
++  });
++
++  /**
++   * El caso que rompe una implementación ingenua. El service worker de MV3 se
++   * duerme y revive; al despertar, varias peticiones pueden pedir el host a la
++   * vez y provocar dos `createDocument` concurrentes.
++   */
++  it('llamadas concurrentes comparten un solo arranque', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await Promise.all([host.ensure(), host.ensure(), host.ensure(), host.ensure()]);
++    expect(f.calls.create).toBe(1);
++  });
++
++  it('si otra invocación gana la carrera, el "ya existe" se trata como éxito', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    // Alguien externo crea el documento entre la comprobación y la creación.
++    const original = f.api.offscreen?.createDocument;
++    if (original === undefined) throw new Error('el doble debe exponer offscreen');
++    await original({ url: 'x', reasons: [], justification: '' });
++
++    await expect(host.ensure()).resolves.toBeUndefined();
++    expect(host.isReady).toBe(true);
++  });
++
++  it('un error real de creación sí se propaga', async () => {
++    const f = fakeApi();
++    replaceCreate(f.api, async () => {
++      throw new Error('cuota de almacenamiento agotada');
++    });
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await expect(host.ensure()).rejects.toThrow(/cuota/);
++    expect(host.isReady).toBe(false);
++  });
++
++  it('tras un fallo, un intento posterior vuelve a probar', async () => {
++    const f = fakeApi();
++    const crear = offscreenOf(f.api).createDocument.bind(offscreenOf(f.api));
++    let falla = true;
++    replaceCreate(f.api, async (o) => {
++      if (falla) {
++        falla = false;
++        throw new Error('fallo transitorio');
++      }
++      return crear(o);
++    });
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await expect(host.ensure()).rejects.toThrow(/transitorio/);
++    await expect(host.ensure()).resolves.toBeUndefined();
++    expect(host.isReady).toBe(true);
++  });
++
++  it('usa el URL de la extensión, no una ruta relativa', async () => {
++    const f = fakeApi();
++    const offscreen = f.api.offscreen;
++    if (offscreen === undefined) throw new Error('el doble debe exponer offscreen');
++    const spy = vi.spyOn(offscreen, 'createDocument');
++    await new ChromiumRuntimeHost({ api: f.api }).ensure();
++    expect(spy.mock.calls[0]?.[0]?.url).toBe(`chrome-extension://fake/${OFFSCREEN_PATH}`);
++  });
++
++  it('cae a hasDocument cuando el navegador no tiene getContexts', async () => {
++    const f = fakeApi({ supportsGetContexts: false, startsWithDocument: true });
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await host.ensure();
++    expect(f.calls.create).toBe(0);
++    expect(host.isReady).toBe(true);
++  });
++
++  it('falla con claridad si la plataforma no tiene offscreen', async () => {
++    const f = fakeApi();
++    const sinOffscreen: ExtensionApi = { runtime: f.api.runtime };
++    await expect(new ChromiumRuntimeHost({ api: sinOffscreen }).ensure()).rejects.toThrow(
++      /offscreen no disponible/,
++    );
++  });
++
++  it('teardown cierra el documento y permite volver a arrancar', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await host.ensure();
++    await host.teardown();
++    expect(f.exists).toBe(false);
++    expect(host.isReady).toBe(false);
++    await host.ensure();
++    expect(f.calls.create).toBe(2);
++  });
++
++  it('teardown sin documento no lanza', async () => {
++    const f = fakeApi();
++    await expect(new ChromiumRuntimeHost({ api: f.api }).teardown()).resolves.toBeUndefined();
++    expect(f.calls.close).toBe(0);
++  });
++});
++
++describe('ChromiumRuntimeHost · trabajo sobre el puerto', () => {
++  it('run garantiza el host antes de enviar y devuelve el resultado', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    const res = await host.run('infer', { texto: 'hola' }, isInferRes);
++    expect(f.calls.create).toBe(1);
++    expect(res).toEqual({ eco: 'hola', puerto: OFFSCREEN_PORT });
++  });
++
++  it('reutiliza el mismo puerto entre llamadas', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await host.run('infer', { texto: 'a' }, isInferRes);
++    await host.run('infer', { texto: 'b' }, isInferRes);
++    expect(f.calls.connect).toBe(1);
++  });
++
++  it('valida lo que vuelve del otro lado de la frontera', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    const esperaOtraCosa = (v: unknown): v is { total: number } =>
++      typeof v === 'object' && v !== null && typeof (v as { total: unknown }).total === 'number';
++    await expect(host.run('infer', { texto: 'hola' }, esperaOtraCosa)).rejects.toMatchObject({
++      code: ErrorCode.BadRequest,
++    });
++  });
++
++  it('una carga que el host offscreen no acepta se rechaza allí, no aquí', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await expect(host.run('infer', { texto: 42 }, isInferRes)).rejects.toMatchObject({
++      code: ErrorCode.BadRequest,
++    });
++  });
++
++  it('un canal que el host no atiende devuelve Unavailable', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await expect(host.run('analyze', { texto: 'hola' }, isInferRes)).rejects.toMatchObject({
++      code: ErrorCode.Unavailable,
++    });
++  });
++
++  /**
++   * El navegador puede reclamar el documento offscreen en cualquier momento.
++   * Escribir sobre el puerto muerto sería el fallo silencioso más caro posible:
++   * peticiones que nunca vuelven.
++   */
++  it('si el puerto cae, el host se marca no listo y la siguiente llamada reconecta', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await host.run('infer', { texto: 'a' }, isInferRes);
++    expect(host.isReady).toBe(true);
++
++    f.puertos[0]?.drop();
++    expect(host.isReady).toBe(false);
++
++    const res = await host.run('infer', { texto: 'b' }, isInferRes);
++    expect(res.eco).toBe('b');
++    expect(f.calls.connect).toBe(2);
++  });
++
++  it('una petición en vuelo cuando cae el puerto se rechaza en vez de colgarse', async () => {
++    const f = fakeApi();
++    // El host offscreen deja de contestar: la respuesta nunca llega.
++    const conexiones: { drop: () => void }[] = [];
++    (f.api.runtime as { connect: (i: { name: string }) => PortLike }).connect = () => {
++      const par = portPair();
++      new RpcServer(portTransport(par.far)).on('infer', isInferReq, () => new Promise(() => {}));
++      conexiones.push({ drop: par.drop });
++      return par.near;
++    };
++
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    const p = host.run('infer', { texto: 'a' }, isInferRes);
++    await flush();
++    // Si esto falla, el drop llegaría antes de conectar y el test expiraría sin
++    // decir por qué. Mejor romper aquí.
++    expect(conexiones).toHaveLength(1);
++    conexiones[0]?.drop();
++    await expect(p).rejects.toMatchObject({ code: ErrorCode.Unavailable });
++  });
++
++  it('teardown desconecta el puerto además de cerrar el documento', async () => {
++    const f = fakeApi();
++    const host = new ChromiumRuntimeHost({ api: f.api });
++    await host.run('infer', { texto: 'a' }, isInferRes);
++    await host.teardown();
++    expect(f.exists).toBe(false);
++
++    await host.run('infer', { texto: 'b' }, isInferRes);
++    expect(f.calls.connect).toBe(2);
++    expect(f.calls.create).toBe(2);
++  });
++});
++
++describe('selección de plataforma', () => {
++  it('reconoce Firefox', () => {
++    expect(detectPlatform('Mozilla/5.0 (X11; Linux) Gecko/20100101 Firefox/130.0')).toBe('firefox');
++  });
++
++  it('reconoce Safari y no lo confunde con Chrome', () => {
++    expect(detectPlatform('Mozilla/5.0 (Macintosh) Version/17.0 Safari/605.1.15')).toBe('safari');
++    expect(detectPlatform('Mozilla/5.0 (Macintosh) Chrome/120.0.0.0 Safari/537.36')).toBe(
++      'chromium',
++    );
++  });
++
++  it('Edge y Opera comparten camino con Chromium', () => {
++    expect(detectPlatform('Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0')).toBe(
++      'chromium',
++    );
++    expect(detectPlatform('Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36 OPR/106.0.0.0')).toBe(
++      'chromium',
++    );
++  });
++
++  it('sin user-agent asume Chromium en lugar de fallar', () => {
++    expect(detectPlatform('')).toBe('chromium');
++  });
++
++  it('devuelve el host correspondiente a cada plataforma', () => {
++    expect(createRuntimeHost('firefox').platform).toBe('firefox');
++    expect(createRuntimeHost('safari').platform).toBe('safari');
++    expect(createRuntimeHost('chromium', fakeApi().api).platform).toBe('chromium');
++  });
++});
+diff --git a/apps/extension/tsconfig.json b/apps/extension/tsconfig.json
+new file mode 100644
+index 0000000..253dadb
+--- /dev/null
++++ b/apps/extension/tsconfig.json
+@@ -0,0 +1,16 @@
++{
++  "extends": "../../tsconfig.base.json",
++  "compilerOptions": {
++    "lib": ["ES2022", "DOM"],
++    "types": [],
++    "noEmit": true,
++    // Se apunta al fuente de los paquetes del workspace, no a su `dist`: así el
++    // typecheck no depende de haber compilado antes, y un cambio en un contrato
++    // rompe aquí en el mismo commit en lugar de en el siguiente build.
++    "paths": {
++      "@xpx/ipc": ["../../packages/ipc/src/index.ts"],
++      "@xpx/kernel": ["../../packages/kernel/src/index.ts"]
++    }
++  },
++  "include": ["src/**/*", "test/**/*", "wxt.config.ts"]
++}
+diff --git a/docs/03-arquitectura.md b/docs/03-arquitectura.md
+index d475189..dd9fd76 100644
+--- a/docs/03-arquitectura.md
++++ b/docs/03-arquitectura.md
+@@ -355,8 +355,8 @@ almacena localmente el extracto de evidencia que él eligió incluir.
+ 
+ ## 11. IPC
+ 
+-Todos los mensajes entre superficies pasan por `@xpx/ipc`: RPC tipado sobre
+-`runtime.connect` con validación de esquema en ambos extremos (Zod o Valibot).
++Todos los mensajes entre superficies pasan por `@xpx/ipc`: RPC tipado sobre `runtime.connect`,
++con validación en ambos extremos.
+ 
+ - El content script es **no privilegiado**: no puede pedir inferencia arbitraria ni leer el
+   historial. Solo puede enviar contenido normalizado del documento en el que vive y recibir
+@@ -364,6 +364,20 @@ Todos los mensajes entre superficies pasan por `@xpx/ipc`: RPC tipado sobre
+ - Todo mensaje entrante se valida antes de tocar lógica de negocio. Una página hostil puede
+   intentar hablar con nuestro content script.
+ - Los canales llevan versión; una versión incompatible degrada en lugar de fallar.
++- Los errores internos **no** viajan al llamante. Un mensaje de excepción puede contener rutas o
++  contenido; solo un `IpcError` explícito cruza la frontera con su texto intacto.
++
++**Validación sin librería de esquemas.** Se descartaron Zod y Valibot, que era la idea inicial.
++`@xpx/ipc` corre también en el content script, donde el presupuesto es de 15 KB gzip, y una
++librería de esquemas se lleva una fracción notable de él para validar una decena de formas muy
++simples. En su lugar, el tipo `Validator<T>` es un predicado de tipo: cada canal declara el suyo
++junto al manejador, y no hay forma de registrar una ruta sin decir qué acepta. Si algún día la
++superficie de mensajes crece hasta justificar el peso, la interfaz no cambia.
++
++**El transporte es una interfaz, no un puerto.** `Transport` son dos operaciones —`post` y
++`subscribe`—, y `portTransport()` es la única traducción entre la API del navegador y el RPC. Por
++eso el protocolo entero (correlación, tiempos de espera, cancelación, respuestas huérfanas) se
++prueba sin navegador.
+ 
+ ---
+ 
+diff --git a/packages/detectors/extinction-validator/package.json b/packages/detectors/extinction-validator/package.json
+index 345bff5..3155605 100644
+--- a/packages/detectors/extinction-validator/package.json
++++ b/packages/detectors/extinction-validator/package.json
+@@ -15,7 +15,8 @@
+   "files": ["dist", "NOTICE.md"],
+   "scripts": {
+     "build": "tsc -p tsconfig.json",
+-    "typecheck": "tsc -p tsconfig.json --noEmit"
++    "//typecheck": "--build, no -p: este paquete referencia al kernel, y sin construir sus declaraciones primero @xpx/kernel no resuelve. --noEmit es incompatible con proyectos referenciados que sí emiten.",
++    "typecheck": "tsc --build"
+   },
+   "dependencies": {
+     "@xpx/kernel": "workspace:*"
+diff --git a/packages/detectors/provenance/package.json b/packages/detectors/provenance/package.json
+index 1500b6a..1986857 100644
+--- a/packages/detectors/provenance/package.json
++++ b/packages/detectors/provenance/package.json
+@@ -10,7 +10,8 @@
+   "files": ["dist"],
+   "scripts": {
+     "build": "tsc -p tsconfig.json",
+-    "typecheck": "tsc -p tsconfig.json --noEmit"
++    "//typecheck": "--build, no -p: este paquete referencia al kernel, y sin construir sus declaraciones primero @xpx/kernel no resuelve. --noEmit es incompatible con proyectos referenciados que sí emiten.",
++    "typecheck": "tsc --build"
+   },
+   "dependencies": { "@xpx/kernel": "workspace:*" }
+ }
+diff --git a/packages/ipc/package.json b/packages/ipc/package.json
+new file mode 100644
+index 0000000..7d1ec0f
+--- /dev/null
++++ b/packages/ipc/package.json
+@@ -0,0 +1,20 @@
++{
++  "name": "@xpx/ipc",
++  "version": "0.1.0",
++  "description": "RPC tipado con validación en ambos extremos. Sin dependencias.",
++  "license": "Apache-2.0",
++  "type": "module",
++  "main": "./dist/index.js",
++  "types": "./dist/index.d.ts",
++  "exports": {
++    ".": {
++      "types": "./dist/index.d.ts",
++      "default": "./dist/index.js"
++    }
++  },
++  "files": ["dist"],
++  "scripts": {
++    "build": "tsc -p tsconfig.json",
++    "typecheck": "tsc -p tsconfig.json --noEmit"
++  }
++}
+diff --git a/packages/ipc/src/env.ts b/packages/ipc/src/env.ts
+new file mode 100644
+index 0000000..ef7aad9
+--- /dev/null
++++ b/packages/ipc/src/env.ts
+@@ -0,0 +1,34 @@
++/**
++ * Temporizadores y señales de cancelación como interfaces inyectables.
++ *
++ * TypeScript declara `setTimeout` y `AbortSignal` en lib.dom.d.ts, y este
++ * paquete compila sin DOM para poder correr también en el servicio de API
++ * sobre Node. En lugar de relajar la restricción, se declara la forma mínima
++ * necesaria: un `setTimeout` real y un `AbortSignal` real las satisfacen
++ * estructuralmente.
++ *
++ * Efecto secundario útil: los tests controlan el tiempo sin trucos del
++ * framework, simplemente pasando otro temporizador.
++ */
++
++export interface TimerApi {
++  setTimeout(fn: () => void, ms: number): unknown;
++  clearTimeout(handle: unknown): void;
++}
++
++export interface AbortLike {
++  readonly aborted: boolean;
++  addEventListener?(type: 'abort', listener: () => void, options?: { once?: boolean }): void;
++  removeEventListener?(type: 'abort', listener: () => void): void;
++}
++
++interface GlobalTimers {
++  setTimeout(fn: () => void, ms: number): unknown;
++  clearTimeout(handle: unknown): void;
++}
++
++/** Temporizador del entorno. Existe en navegador, worker y Node por igual. */
++export const systemTimers: TimerApi = {
++  setTimeout: (fn, ms) => (globalThis as unknown as GlobalTimers).setTimeout(fn, ms),
++  clearTimeout: (h) => (globalThis as unknown as GlobalTimers).clearTimeout(h),
++};
+diff --git a/packages/ipc/src/index.ts b/packages/ipc/src/index.ts
+new file mode 100644
+index 0000000..d94f0bb
+--- /dev/null
++++ b/packages/ipc/src/index.ts
+@@ -0,0 +1,16 @@
++export type { Channel, Envelope, ErrorPayload, Validator } from './protocol.js';
++export {
++  ErrorCode,
++  IpcError,
++  PROTOCOL_VERSION,
++  isChannel,
++  isEnvelope,
++  isErrorPayload,
++  sanitizeError,
++} from './protocol.js';
++
++export type { AbortLike, TimerApi } from './env.js';
++export { systemTimers } from './env.js';
++
++export type { RpcClientOptions, Transport } from './rpc.js';
++export { RpcClient, RpcServer } from './rpc.js';
+diff --git a/packages/ipc/src/protocol.ts b/packages/ipc/src/protocol.ts
+new file mode 100644
+index 0000000..db4e422
+--- /dev/null
++++ b/packages/ipc/src/protocol.ts
+@@ -0,0 +1,98 @@
++/**
++ * Protocolo de mensajes entre superficies de la extensión.
++ *
++ * Todo mensaje se valida en ambos extremos antes de tocar lógica de negocio.
++ * No es ceremonia: el content script vive dentro de la página del usuario y
++ * una página hostil puede intentar hablar con él. Un mensaje sin validar es
++ * una vía directa hacia el contexto privilegiado. Ver 03-arquitectura.md §11.
++ */
++
++export const PROTOCOL_VERSION = 1;
++
++export type Channel =
++  | 'analyze' // content script → background: analiza este contenido
++  | 'explain' // content script → background: dame el detalle de un veredicto
++  | 'settings' // UI → background
++  | 'infer'; // background → host de inferencia
++
++export interface Envelope<T = unknown> {
++  readonly v: number;
++  readonly id: string;
++  readonly channel: Channel;
++  readonly kind: 'request' | 'response' | 'error';
++  readonly payload: T;
++}
++
++export interface ErrorPayload {
++  readonly code: ErrorCode;
++  readonly message: string;
++}
++
++export const ErrorCode = {
++  BadRequest: 'BAD_REQUEST',
++  VersionMismatch: 'VERSION_MISMATCH',
++  Timeout: 'TIMEOUT',
++  Aborted: 'ABORTED',
++  Internal: 'INTERNAL',
++  Unavailable: 'UNAVAILABLE',
++} as const;
++
++export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
++
++/**
++ * Validador mínimo. Se prefiere a Zod o Valibot aquí porque este código corre
++ * también en el content script, donde el presupuesto es de 15 KB gzip y una
++ * librería de esquemas se lleva una fracción notable de él.
++ */
++export type Validator<T> = (value: unknown) => value is T;
++
++/** Techo del identificador de correlación. Un id sin límite es memoria ajena. */
++const MAX_ID_LENGTH = 64;
++
++export function isEnvelope(v: unknown): v is Envelope {
++  if (typeof v !== 'object' || v === null) return false;
++  const e = v as Record<string, unknown>;
++  return (
++    typeof e['v'] === 'number' &&
++    typeof e['id'] === 'string' &&
++    e['id'].length > 0 &&
++    e['id'].length <= MAX_ID_LENGTH &&
++    isChannel(e['channel']) &&
++    (e['kind'] === 'request' || e['kind'] === 'response' || e['kind'] === 'error') &&
++    'payload' in e
++  );
++}
++
++const CHANNELS: readonly string[] = ['analyze', 'explain', 'settings', 'infer'];
++
++export function isChannel(v: unknown): v is Channel {
++  return typeof v === 'string' && CHANNELS.includes(v);
++}
++
++export function isErrorPayload(v: unknown): v is ErrorPayload {
++  if (typeof v !== 'object' || v === null) return false;
++  const e = v as Record<string, unknown>;
++  return typeof e['code'] === 'string' && typeof e['message'] === 'string';
++}
++
++export class IpcError extends Error {
++  override readonly name = 'IpcError';
++
++  constructor(
++    readonly code: ErrorCode,
++    message: string,
++  ) {
++    super(message);
++  }
++}
++
++/**
++ * Los errores internos no se propagan al llamante tal cual: el mensaje puede
++ * contener rutas, contenido o detalles de implementación, y el content script
++ * es un contexto no privilegiado dentro de una página ajena. Un `IpcError`
++ * explícito sí viaja, porque quien lo lanzó decidió que fuera visible.
++ */
++export function sanitizeError(err: unknown): ErrorPayload {
++  if (err instanceof IpcError) return { code: err.code, message: err.message };
++  return { code: ErrorCode.Internal, message: 'error interno' };
++}
+diff --git a/packages/ipc/src/rpc.ts b/packages/ipc/src/rpc.ts
+new file mode 100644
+index 0000000..4b6a843
+--- /dev/null
++++ b/packages/ipc/src/rpc.ts
+@@ -0,0 +1,291 @@
++import { systemTimers } from './env.js';
++import type { AbortLike, TimerApi } from './env.js';
++import {
++  ErrorCode,
++  IpcError,
++  PROTOCOL_VERSION,
++  isEnvelope,
++  isErrorPayload,
++  sanitizeError,
++} from './protocol.js';
++import type { Channel, Envelope, Validator } from './protocol.js';
++
++/**
++ * El canal físico por el que viajan los mensajes. Un puerto de `runtime.connect`,
++ * un `MessagePort` o un par de funciones en un test lo satisfacen igual.
++ *
++ * Que sea esta interfaz y no el puerto del navegador lo que consume el RPC es
++ * lo que permite probar el protocolo entero —correlación, tiempos de espera,
++ * cancelación— sin navegador.
++ */
++export interface Transport {
++  post(message: unknown): void;
++  /** Registra un oyente y devuelve la función que lo da de baja. */
++  subscribe(listener: (message: unknown) => void): () => void;
++}
++
++/**
++ * Techo por defecto de una petición. Generoso a propósito: la primera llamada
++ * tras despertar el service worker puede incluir arrancar el host de
++ * inferencia y cargar un modelo. El presupuesto de 800 ms del primer veredicto
++ * se controla arriba, en el planificador, no aquí.
++ */
++const DEFAULT_TIMEOUT_MS = 15_000;
++
++let idCounter = 0;
++
++/**
++ * Identificador de correlación. No es un valor de seguridad —solo distingue
++ * peticiones dentro de un mismo par de transportes— así que no necesita
++ * entropía criptográfica, pero sí ser único frente a reinicios del contador.
++ */
++function defaultId(): string {
++  idCounter = (idCounter + 1) >>> 0;
++  return `${idCounter.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
++}
++
++// ---------------------------------------------------------------------------
++// Servidor
++// ---------------------------------------------------------------------------
++
++interface Route {
++  readonly validate: Validator<unknown>;
++  readonly handle: (payload: never) => unknown;
++}
++
++/**
++ * Extremo que atiende peticiones. Cada canal declara su validador junto al
++ * manejador: no hay forma de registrar una ruta sin decir qué acepta.
++ */
++export class RpcServer {
++  readonly #transport: Transport;
++  readonly #routes = new Map<Channel, Route>();
++  #unsubscribe: (() => void) | undefined;
++
++  constructor(transport: Transport) {
++    this.#transport = transport;
++    this.#unsubscribe = transport.subscribe((m) => {
++      void this.#receive(m);
++    });
++  }
++
++  on<T, R>(
++    channel: Channel,
++    validate: Validator<T>,
++    handle: (payload: T) => R | Promise<R>,
++  ): this {
++    this.#routes.set(channel, {
++      validate: validate as Validator<unknown>,
++      handle: handle as (payload: never) => unknown,
++    });
++    return this;
++  }
++
++  dispose(): void {
++    this.#unsubscribe?.();
++    this.#unsubscribe = undefined;
++    this.#routes.clear();
++  }
++
++  async #receive(message: unknown): Promise<void> {
++    // Ruido del canal o de la página: se descarta en silencio. Responder a algo
++    // que no es nuestro solo confirmaría a un tercero que estamos escuchando.
++    if (!isEnvelope(message) || message.kind !== 'request') return;
++
++    if (message.v !== PROTOCOL_VERSION) {
++      this.#fail(message, ErrorCode.VersionMismatch, `versión de protocolo ${message.v} no soportada`);
++      return;
++    }
++
++    const route = this.#routes.get(message.channel);
++    if (route === undefined) {
++      this.#fail(message, ErrorCode.Unavailable, `canal "${message.channel}" no atendido`);
++      return;
++    }
++
++    if (!route.validate(message.payload)) {
++      this.#fail(message, ErrorCode.BadRequest, 'carga con forma inesperada');
++      return;
++    }
++
++    try {
++      const result: unknown = await (route.handle as (p: unknown) => unknown)(message.payload);
++      this.#reply(message, result);
++    } catch (err) {
++      const { code, message: text } = sanitizeError(err);
++      this.#fail(message, code, text);
++    }
++  }
++
++  #reply(request: Envelope, payload: unknown): void {
++    this.#transport.post({
++      v: PROTOCOL_VERSION,
++      id: request.id,
++      channel: request.channel,
++      kind: 'response',
++      payload,
++    } satisfies Envelope);
++  }
++
++  #fail(request: Envelope, code: ErrorCode, message: string): void {
++    this.#transport.post({
++      v: PROTOCOL_VERSION,
++      id: request.id,
++      channel: request.channel,
++      kind: 'error',
++      payload: { code, message },
++    } satisfies Envelope);
++  }
++}
++
++// ---------------------------------------------------------------------------
++// Cliente
++// ---------------------------------------------------------------------------
++
++interface Pending {
++  readonly resolve: (value: never) => void;
++  readonly reject: (err: unknown) => void;
++  readonly validate: Validator<unknown>;
++  readonly timer: unknown;
++  readonly onAbort: (() => void) | undefined;
++  readonly signal: AbortLike | undefined;
++}
++
++export interface RpcClientOptions {
++  readonly transport: Transport;
++  readonly timeoutMs?: number;
++  readonly newId?: () => string;
++  readonly timers?: TimerApi;
++}
++
++/**
++ * Extremo que emite peticiones y correlaciona respuestas por id.
++ *
++ * Toda salida —respuesta, error, tiempo agotado, cancelación o cierre— pasa
++ * por `#take`, que es el único punto donde se retira una petición pendiente.
++ * Esa unicidad es lo que garantiza que un temporizador nunca sobrevive a su
++ * petición y que una respuesta tardía no revive una promesa ya resuelta.
++ */
++export class RpcClient {
++  readonly #transport: Transport;
++  readonly #pending = new Map<string, Pending>();
++  readonly #timeoutMs: number;
++  readonly #newId: () => string;
++  readonly #timers: TimerApi;
++  #unsubscribe: (() => void) | undefined;
++
++  constructor(opts: RpcClientOptions) {
++    this.#transport = opts.transport;
++    this.#timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
++    this.#newId = opts.newId ?? defaultId;
++    this.#timers = opts.timers ?? systemTimers;
++    this.#unsubscribe = opts.transport.subscribe((m) => {
++      this.#receive(m);
++    });
++  }
++
++  /** Peticiones en vuelo. Expuesto para que los tests detecten fugas. */
++  get pendingCount(): number {
++    return this.#pending.size;
++  }
++
++  request<TReq, TRes>(
++    channel: Channel,
++    payload: TReq,
++    validate: Validator<TRes>,
++    signal?: AbortLike,
++  ): Promise<TRes> {
++    return new Promise<TRes>((resolve, reject) => {
++      if (signal?.aborted === true) {
++        reject(new IpcError(ErrorCode.Aborted, 'cancelado antes de enviar'));
++        return;
++      }
++      if (this.#unsubscribe === undefined) {
++        reject(new IpcError(ErrorCode.Unavailable, 'cliente cerrado'));
++        return;
++      }
++
++      const id = this.#newId();
++
++      const timer = this.#timers.setTimeout(() => {
++        this.#take(id)?.reject(
++          new IpcError(ErrorCode.Timeout, `sin respuesta en ${this.#timeoutMs} ms`),
++        );
++      }, this.#timeoutMs);
++
++      const onAbort =
++        signal === undefined
++          ? undefined
++          : () => {
++              this.#take(id)?.reject(new IpcError(ErrorCode.Aborted, 'petición cancelada'));
++            };
++      if (signal !== undefined && onAbort !== undefined) {
++        signal.addEventListener?.('abort', onAbort, { once: true });
++      }
++
++      this.#pending.set(id, {
++        resolve: resolve as (value: never) => void,
++        reject,
++        validate: validate as Validator<unknown>,
++        timer,
++        onAbort,
++        signal,
++      });
++
++      this.#transport.post({
++        v: PROTOCOL_VERSION,
++        id,
++        channel,
++        kind: 'request',
++        payload,
++      } satisfies Envelope);
++    });
++  }
++
++  /** Cierra el cliente y rechaza lo que quedara en vuelo. */
++  dispose(): void {
++    this.#unsubscribe?.();
++    this.#unsubscribe = undefined;
++    for (const id of [...this.#pending.keys()]) {
++      this.#take(id)?.reject(new IpcError(ErrorCode.Unavailable, 'cliente cerrado'));
++    }
++  }
++
++  #receive(message: unknown): void {
++    if (!isEnvelope(message) || message.kind === 'request') return;
++
++    // Una respuesta huérfana o duplicada no tiene destinatario. No es un error:
++    // pasa siempre que una petición ya se canceló o agotó su tiempo.
++    const pending = this.#take(message.id);
++    if (pending === undefined) return;
++
++    if (message.kind === 'error') {
++      const payload = isErrorPayload(message.payload)
++        ? message.payload
++        : { code: ErrorCode.Internal, message: 'error interno' };
++      pending.reject(new IpcError(payload.code, payload.message));
++      return;
++    }
++
++    if (!pending.validate(message.payload)) {
++      pending.reject(new IpcError(ErrorCode.BadRequest, 'respuesta con forma inesperada'));
++      return;
++    }
++    pending.resolve(message.payload as never);
++  }
++
++  /**
++   * Retira una petición y libera todo lo que colgaba de ella. Devuelve
++   * `undefined` si ya se había retirado, que es la señal de "llegaste tarde".
++   */
++  #take(id: string): Pending | undefined {
++    const pending = this.#pending.get(id);
++    if (pending === undefined) return undefined;
++    this.#pending.delete(id);
++    this.#timers.clearTimeout(pending.timer);
++    if (pending.onAbort !== undefined) {
++      pending.signal?.removeEventListener?.('abort', pending.onAbort);
++    }
++    return pending;
++  }
++}
+diff --git a/packages/ipc/test/rpc.test.ts b/packages/ipc/test/rpc.test.ts
+new file mode 100644
+index 0000000..3f67bed
+--- /dev/null
++++ b/packages/ipc/test/rpc.test.ts
+@@ -0,0 +1,293 @@
++import { describe, expect, it, vi } from 'vitest';
++import { RpcClient, RpcServer } from '../src/rpc.js';
++import type { Transport } from '../src/rpc.js';
++import { ErrorCode, IpcError, PROTOCOL_VERSION, isEnvelope } from '../src/protocol.js';
++import type { TimerApi } from '../src/env.js';
++
++/** Par de transportes conectados, como dos extremos de un puerto. */
++function connectedPair(): { a: Transport; b: Transport } {
++  const listeners: { a: ((m: unknown) => void)[]; b: ((m: unknown) => void)[] } = { a: [], b: [] };
++  const make = (self: 'a' | 'b', other: 'a' | 'b'): Transport => ({
++    post: (m) => {
++      // Entrega asíncrona, como un puerto real.
++      queueMicrotask(() => {
++        for (const l of [...listeners[other]]) l(m);
++      });
++    },
++    subscribe: (l) => {
++      listeners[self].push(l);
++      return () => {
++        listeners[self] = listeners[self].filter((x) => x !== l);
++      };
++    },
++  });
++  return { a: make('a', 'b'), b: make('b', 'a') };
++}
++
++/** Temporizador manual: el tiempo avanza cuando el test lo dice. */
++function manualTimers(): TimerApi & { fire: () => void; readonly count: number } {
++  let pending: (() => void)[] = [];
++  return {
++    setTimeout(fn) {
++      pending.push(fn);
++      return fn;
++    },
++    clearTimeout(h) {
++      pending = pending.filter((f) => f !== h);
++    },
++    fire() {
++      const now = pending;
++      pending = [];
++      for (const f of now) f();
++    },
++    get count() {
++      return pending.length;
++    },
++  };
++}
++
++const isNumber = (v: unknown): v is number => typeof v === 'number';
++const isString = (v: unknown): v is string => typeof v === 'string';
++
++describe('RPC básico', () => {
++  it('entrega petición y respuesta', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, (n) => n * 2);
++    const client = new RpcClient({ transport: a });
++    await expect(client.request('analyze', 21, isNumber)).resolves.toBe(42);
++  });
++
++  it('soporta manejadores asíncronos', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, async (n) => {
++      await Promise.resolve();
++      return n + 1;
++    });
++    await expect(new RpcClient({ transport: a }).request('analyze', 1, isNumber)).resolves.toBe(2);
++  });
++
++  it('correlaciona peticiones concurrentes por id', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, async (n) => {
++      // La primera tarda más: las respuestas llegan en orden inverso.
++      await new Promise((r) => setTimeout(r, n === 1 ? 20 : 0));
++      return n * 10;
++    });
++    const client = new RpcClient({ transport: a });
++    const [x, y] = await Promise.all([
++      client.request('analyze', 1, isNumber),
++      client.request('analyze', 2, isNumber),
++    ]);
++    expect([x, y]).toEqual([10, 20]);
++  });
++
++  it('canales distintos no se pisan', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b)
++      .on('analyze', isNumber, (n) => n + 1)
++      .on('settings', isString, (s) => s.toUpperCase());
++    const client = new RpcClient({ transport: a });
++    await expect(client.request('analyze', 1, isNumber)).resolves.toBe(2);
++    await expect(client.request('settings', 'tema', isString)).resolves.toBe('TEMA');
++  });
++});
++
++describe('validación', () => {
++  it('rechaza una carga con forma inesperada antes de invocar el manejador', async () => {
++    const { a, b } = connectedPair();
++    const handler = vi.fn(() => 1);
++    new RpcServer(b).on('analyze', isNumber, handler);
++    await expect(
++      new RpcClient({ transport: a }).request('analyze', 'no soy un número', isNumber),
++    ).rejects.toMatchObject({ code: ErrorCode.BadRequest });
++    expect(handler).not.toHaveBeenCalled();
++  });
++
++  it('el cliente también valida la respuesta', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, () => 'texto inesperado');
++    await expect(
++      new RpcClient({ transport: a }).request('analyze', 1, isNumber),
++    ).rejects.toMatchObject({ code: ErrorCode.BadRequest });
++  });
++
++  it('ignora mensajes que no son envelopes', () => {
++    expect(isEnvelope(null)).toBe(false);
++    expect(isEnvelope({ v: 1 })).toBe(false);
++    expect(isEnvelope({ v: 1, id: '', channel: 'analyze', kind: 'request', payload: 1 })).toBe(false);
++    expect(isEnvelope({ v: 1, id: 'x', channel: 'inventado', kind: 'request', payload: 1 })).toBe(false);
++    expect(isEnvelope({ v: 1, id: 'x', channel: 'analyze', kind: 'saludo', payload: 1 })).toBe(false);
++    expect(isEnvelope({ v: 1, id: 'x', channel: 'analyze', kind: 'request' })).toBe(false);
++    expect(isEnvelope({ v: 1, id: 'x', channel: 'analyze', kind: 'request', payload: 1 })).toBe(true);
++  });
++
++  it('un id desmesurado se rechaza', () => {
++    expect(
++      isEnvelope({ v: 1, id: 'x'.repeat(500), channel: 'analyze', kind: 'request', payload: 1 }),
++    ).toBe(false);
++  });
++
++  it('rechaza una versión de protocolo distinta', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, () => 1);
++    const client = new RpcClient({ transport: a });
++
++    // Se envía a mano un envelope con versión futura.
++    const respuesta = new Promise<unknown>((resolve) => {
++      a.subscribe((m) => {
++        if (isEnvelope(m) && m.kind === 'error') resolve(m.payload);
++      });
++    });
++    a.post({ v: 99, id: 'z', channel: 'analyze', kind: 'request', payload: 1 });
++
++    await expect(respuesta).resolves.toMatchObject({ code: ErrorCode.VersionMismatch });
++    client.dispose();
++  });
++
++  /** Un mensaje cualquiera de la página no debe provocar respuesta alguna. */
++  it('el servidor no contesta a ruido', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, () => 1);
++    const visto: unknown[] = [];
++    a.subscribe((m) => visto.push(m));
++    a.post({ hola: 'soy la página' });
++    a.post('texto suelto');
++    a.post(null);
++    await new Promise((r) => setTimeout(r, 5));
++    expect(visto).toHaveLength(0);
++  });
++});
++
++describe('errores', () => {
++  it('un canal sin manejador devuelve Unavailable', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b);
++    await expect(
++      new RpcClient({ transport: a }).request('analyze', 1, isNumber),
++    ).rejects.toMatchObject({ code: ErrorCode.Unavailable });
++  });
++
++  /**
++   * El content script vive en la página del usuario. Un mensaje de error con
++   * la traza interna sería una fuga hacia un contexto no privilegiado.
++   */
++  it('un fallo interno no filtra el mensaje original', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, () => {
++      throw new Error('/home/usuario/secreto.ts:42 falló la conexión a postgres');
++    });
++    await expect(
++      new RpcClient({ transport: a }).request('analyze', 1, isNumber),
++    ).rejects.toMatchObject({ code: ErrorCode.Internal, message: 'error interno' });
++  });
++
++  it('un rechazo asíncrono se sanea igual que un throw', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, async () => {
++      await Promise.resolve();
++      throw new Error('ruta/interna/filtrable');
++    });
++    await expect(
++      new RpcClient({ transport: a }).request('analyze', 1, isNumber),
++    ).rejects.toMatchObject({ code: ErrorCode.Internal, message: 'error interno' });
++  });
++
++  it('un IpcError explícito sí conserva su código y mensaje', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, () => {
++      throw new IpcError(ErrorCode.BadRequest, 'texto demasiado corto');
++    });
++    await expect(
++      new RpcClient({ transport: a }).request('analyze', 1, isNumber),
++    ).rejects.toMatchObject({ code: ErrorCode.BadRequest, message: 'texto demasiado corto' });
++  });
++});
++
++describe('tiempo y cancelación', () => {
++  it('agota el tiempo si no hay respuesta', async () => {
++    const timers = manualTimers();
++    const { a } = connectedPair(); // sin servidor al otro lado
++    const client = new RpcClient({ transport: a, timers });
++    const p = client.request('analyze', 1, isNumber);
++    timers.fire();
++    await expect(p).rejects.toMatchObject({ code: ErrorCode.Timeout });
++    expect(client.pendingCount).toBe(0);
++  });
++
++  it('una respuesta correcta cancela el temporizador: no quedan fugas', async () => {
++    const timers = manualTimers();
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, (n) => n);
++    const client = new RpcClient({ transport: a, timers });
++    await client.request('analyze', 7, isNumber);
++    expect(timers.count).toBe(0);
++    expect(client.pendingCount).toBe(0);
++  });
++
++  it('rechaza de inmediato si la señal ya venía cancelada', async () => {
++    const { a } = connectedPair();
++    const client = new RpcClient({ transport: a });
++    await expect(client.request('analyze', 1, isNumber, { aborted: true })).rejects.toMatchObject({
++      code: ErrorCode.Aborted,
++    });
++    expect(client.pendingCount).toBe(0);
++  });
++
++  it('cancela una petición en vuelo', async () => {
++    const { a } = connectedPair();
++    const client = new RpcClient({ transport: a, timers: manualTimers() });
++    const ctrl = new AbortController();
++    const p = client.request('analyze', 1, isNumber, ctrl.signal);
++    ctrl.abort();
++    await expect(p).rejects.toMatchObject({ code: ErrorCode.Aborted });
++    expect(client.pendingCount).toBe(0);
++  });
++
++  it('una respuesta tardía tras cancelar no revive la promesa', async () => {
++    const { a, b } = connectedPair();
++    let responder: ((v: number) => void) | undefined;
++    new RpcServer(b).on('analyze', isNumber, () => new Promise<number>((r) => (responder = r)));
++    const client = new RpcClient({ transport: a, timers: manualTimers() });
++    const ctrl = new AbortController();
++    const p = client.request('analyze', 1, isNumber, ctrl.signal);
++    await Promise.resolve();
++    ctrl.abort();
++    await expect(p).rejects.toMatchObject({ code: ErrorCode.Aborted });
++    responder?.(99);
++    await new Promise((r) => setTimeout(r, 5));
++    expect(client.pendingCount).toBe(0);
++  });
++
++  it('dispose rechaza todo lo pendiente y deja de escuchar', async () => {
++    const { a } = connectedPair();
++    const client = new RpcClient({ transport: a, timers: manualTimers() });
++    const p = client.request('analyze', 1, isNumber);
++    client.dispose();
++    await expect(p).rejects.toMatchObject({ code: ErrorCode.Unavailable });
++    expect(client.pendingCount).toBe(0);
++  });
++
++  it('pedir sobre un cliente cerrado falla en vez de colgarse', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isNumber, (n) => n);
++    const client = new RpcClient({ transport: a });
++    client.dispose();
++    await expect(client.request('analyze', 1, isNumber)).rejects.toMatchObject({
++      code: ErrorCode.Unavailable,
++    });
++  });
++
++  it('una respuesta huérfana o duplicada no rompe nada', async () => {
++    const { a, b } = connectedPair();
++    new RpcServer(b).on('analyze', isString, (s) => s);
++    const client = new RpcClient({ transport: a });
++    b.post({
++      v: PROTOCOL_VERSION,
++      id: 'inexistente',
++      channel: 'analyze',
++      kind: 'response',
++      payload: 1,
++    });
++    await expect(client.request('analyze', 'ok', isString)).resolves.toBe('ok');
++  });
++});
+diff --git a/packages/ipc/tsconfig.json b/packages/ipc/tsconfig.json
+new file mode 100644
+index 0000000..128f695
+--- /dev/null
++++ b/packages/ipc/tsconfig.json
+@@ -0,0 +1,13 @@
++{
++  "extends": "../../tsconfig.base.json",
++  "compilerOptions": {
++    // Sin "DOM": este paquete corre también fuera del navegador. Lo que
++    // necesita del entorno (temporizadores, señales) se inyecta desde env.ts.
++    "composite": true,
++    "lib": ["ES2022"],
++    "types": [],
++    "rootDir": "./src",
++    "outDir": "./dist"
++  },
++  "include": ["src/**/*"]
++}
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 35f083b..72c5d2a 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -23,6 +23,9 @@ importers:
+       '@xpx/extinction-validator':
+         specifier: workspace:*
+         version: link:../../packages/detectors/extinction-validator
++      '@xpx/ipc':
++        specifier: workspace:*
++        version: link:../../packages/ipc
+       '@xpx/kernel':
+         specifier: workspace:*
+         version: link:../../packages/kernel
+@@ -46,6 +49,8 @@ importers:
+         specifier: workspace:*
+         version: link:../../kernel
+ 
++  packages/ipc: {}
++
+   packages/kernel: {}
+ 
+ packages:
+diff --git a/vitest.config.ts b/vitest.config.ts
+index 36d5dc7..19619da 100644
+--- a/vitest.config.ts
++++ b/vitest.config.ts
+@@ -5,6 +5,7 @@ export default defineConfig({
+   resolve: {
+     alias: {
+       '@xpx/kernel': fileURLToPath(new URL('./packages/kernel/src/index.ts', import.meta.url)),
++      '@xpx/ipc': fileURLToPath(new URL('./packages/ipc/src/index.ts', import.meta.url)),
+     },
+   },
+   test: {
+-- 
+2.43.0
+

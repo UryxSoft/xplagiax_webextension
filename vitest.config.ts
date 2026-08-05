@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@xpx/kernel': fileURLToPath(new URL('./packages/kernel/src/index.ts', import.meta.url)),
+      '@xpx/ipc': fileURLToPath(new URL('./packages/ipc/src/index.ts', import.meta.url)),
     },
   },
   test: {

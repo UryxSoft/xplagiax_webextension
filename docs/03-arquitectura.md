@@ -355,8 +355,8 @@ almacena localmente el extracto de evidencia que él eligió incluir.
 
 ## 11. IPC
 
-Todos los mensajes entre superficies pasan por `@xpx/ipc`: RPC tipado sobre
-`runtime.connect` con validación de esquema en ambos extremos (Zod o Valibot).
+Todos los mensajes entre superficies pasan por `@xpx/ipc`: RPC tipado sobre `runtime.connect`,
+con validación en ambos extremos.
 
 - El content script es **no privilegiado**: no puede pedir inferencia arbitraria ni leer el
   historial. Solo puede enviar contenido normalizado del documento en el que vive y recibir
@@ -364,6 +364,20 @@ Todos los mensajes entre superficies pasan por `@xpx/ipc`: RPC tipado sobre
 - Todo mensaje entrante se valida antes de tocar lógica de negocio. Una página hostil puede
   intentar hablar con nuestro content script.
 - Los canales llevan versión; una versión incompatible degrada en lugar de fallar.
+- Los errores internos **no** viajan al llamante. Un mensaje de excepción puede contener rutas o
+  contenido; solo un `IpcError` explícito cruza la frontera con su texto intacto.
+
+**Validación sin librería de esquemas.** Se descartaron Zod y Valibot, que era la idea inicial.
+`@xpx/ipc` corre también en el content script, donde el presupuesto es de 15 KB gzip, y una
+librería de esquemas se lleva una fracción notable de él para validar una decena de formas muy
+simples. En su lugar, el tipo `Validator<T>` es un predicado de tipo: cada canal declara el suyo
+junto al manejador, y no hay forma de registrar una ruta sin decir qué acepta. Si algún día la
+superficie de mensajes crece hasta justificar el peso, la interfaz no cambia.
+
+**El transporte es una interfaz, no un puerto.** `Transport` son dos operaciones —`post` y
+`subscribe`—, y `portTransport()` es la única traducción entre la API del navegador y el RPC. Por
+eso el protocolo entero (correlación, tiempos de espera, cancelación, respuestas huérfanas) se
+prueba sin navegador.
 
 ---
 
