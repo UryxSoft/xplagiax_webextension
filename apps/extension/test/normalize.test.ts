@@ -7,7 +7,7 @@ import {
   prepareText,
   sha256Hex,
 } from '../src/content/normalize.js';
-import { isNormalizedInput } from '../src/messaging/wire.js';
+import { isWireInput, toWire } from '../src/messaging/wire.js';
 
 describe('normalizeText', () => {
   it('colapsa la maquetación en espacios simples', () => {
@@ -114,7 +114,7 @@ describe('sha256Hex', () => {
 describe('prepareText', () => {
   it('produce una entrada que el validador de cable acepta', async () => {
     const input = await prepareText('  Un párrafo\n  cualquiera.  ', 'es-ES');
-    expect(isNormalizedInput(input)).toBe(true);
+    expect(isWireInput(toWire(input))).toBe(true);
     expect(input.text).toBe('Un párrafo cualquiera.');
     expect(input.lang).toBe('es');
     expect(input.modality).toBe('text');
@@ -159,7 +159,7 @@ describe('prepareImage', () => {
   it('produce una entrada de imagen válida y hashea los bytes', async () => {
     const bytes = new Uint8Array([137, 80, 78, 71]);
     const input = await prepareImage(bytes);
-    expect(isNormalizedInput(input)).toBe(true);
+    expect(isWireInput(toWire(input))).toBe(true);
     expect(input.modality).toBe('image');
     expect(input.hash).toBe(await sha256Hex(bytes));
     expect(input.tokenCount).toBe(0);

@@ -1,6 +1,6 @@
 import { RpcServer, IpcError, ErrorCode } from '@xpx/ipc';
 import type { NormalizedInput, Verdict } from '@xpx/kernel';
-import { isNormalizedInput } from '../messaging/wire.js';
+import { fromWire, isWireInput } from '../messaging/wire.js';
 import { OFFSCREEN_PORT } from './chromium-host.js';
 import type { ExtensionApi, PortLike } from './extension-api.js';
 import { portTransport } from './port-transport.js';
@@ -55,8 +55,8 @@ export function startInferenceServer(opts: InferenceServerOptions): InferenceSer
       return;
     }
 
-    const server = new RpcServer(portTransport(port)).on('infer', isNormalizedInput, (input) =>
-      run(opts.analyze, input),
+    const server = new RpcServer(portTransport(port)).on('infer', isWireInput, (wire) =>
+      run(opts.analyze, fromWire(wire)),
     );
     servers.set(port, server);
 

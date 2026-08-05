@@ -14,7 +14,8 @@
     "build:edge": "wxt build -b edge",
     "build:opera": "wxt build -b opera",
     "build:safari": "wxt build -b safari",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:e2e": "node e2e/smoke.mjs"
   },
   "dependencies": {
     "@xpx/extinction-validator": "workspace:*",
@@ -23,6 +24,7 @@
     "@xpx/provenance": "workspace:*"
   },
   "devDependencies": {
+    "playwright": "^1.62.1",
     "vite": "^6.4.3",
     "wxt": "^0.21.3"
   }

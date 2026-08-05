@@ -5,7 +5,7 @@ import type { Detector, Evidence, NormalizedInput, Verdict } from '@xpx/kernel';
 import { ChromiumRuntimeHost, OFFSCREEN_PORT } from '../src/platform/chromium-host.js';
 import { startInferenceServer } from '../src/platform/inference-server.js';
 import type { RejectionReason } from '../src/platform/inference-server.js';
-import { isNormalizedInput, isVerdict } from '../src/messaging/wire.js';
+import { isVerdict, isWireInput, toWire } from '../src/messaging/wire.js';
 import { fakeChromium, flush } from './fake-browser.js';
 import type { PortLike } from '../src/platform/extension-api.js';
 
@@ -62,65 +62,65 @@ function pipelineCon(llr: number): Pipeline {
 
 // ---------------------------------------------------------------------------
 
-describe('contrato de cable · isNormalizedInput', () => {
+describe('contrato de cable · isWireInput', () => {
   it('acepta una entrada bien formada', () => {
-    expect(isNormalizedInput(entrada())).toBe(true);
+    expect(isWireInput(toWire(entrada()))).toBe(true);
   });
 
   /** El hash es la clave de caché y lo único que se persiste. */
   it('exige un sha256 hexadecimal, no una cadena cualquiera', () => {
-    expect(isNormalizedInput(entrada({ hash: 'no-soy-un-hash' }))).toBe(false);
-    expect(isNormalizedInput(entrada({ hash: 'A'.repeat(64) }))).toBe(false);
-    expect(isNormalizedInput(entrada({ hash: 'a'.repeat(63) }))).toBe(false);
-    expect(isNormalizedInput(entrada({ hash: '../../etc/passwd' }))).toBe(false);
+    expect(isWireInput(toWire(entrada({ hash: 'no-soy-un-hash' })))).toBe(false);
+    expect(isWireInput(toWire(entrada({ hash: 'A'.repeat(64) })))).toBe(false);
+    expect(isWireInput(toWire(entrada({ hash: 'a'.repeat(63) })))).toBe(false);
+    expect(isWireInput(toWire(entrada({ hash: '../../etc/passwd' })))).toBe(false);
   });
 
   it('rechaza modalidades e idiomas inventados', () => {
-    expect(isNormalizedInput({ ...entrada(), modality: 'telepatía' })).toBe(false);
-    expect(isNormalizedInput(entrada({ lang: '' }))).toBe(false);
-    expect(isNormalizedInput(entrada({ lang: 'x'.repeat(40) }))).toBe(false);
+    expect(isWireInput({ ...toWire(entrada()), modality: 'telepatía' })).toBe(false);
+    expect(isWireInput(toWire(entrada({ lang: '' })))).toBe(false);
+    expect(isWireInput(toWire(entrada({ lang: 'x'.repeat(40) })))).toBe(false);
   });
 
   it('rechaza tokenCount negativo o no finito', () => {
-    expect(isNormalizedInput(entrada({ tokenCount: -1 }))).toBe(false);
-    expect(isNormalizedInput(entrada({ tokenCount: Number.NaN }))).toBe(false);
-    expect(isNormalizedInput(entrada({ tokenCount: Number.POSITIVE_INFINITY }))).toBe(false);
+    expect(isWireInput(toWire(entrada({ tokenCount: -1 })))).toBe(false);
+    expect(isWireInput(toWire(entrada({ tokenCount: Number.NaN })))).toBe(false);
+    expect(isWireInput(toWire(entrada({ tokenCount: Number.POSITIVE_INFINITY })))).toBe(false);
   });
 
   /** Sin cota, un content script comprometido tumba el documento offscreen. */
   it('pone techo al texto', () => {
-    expect(isNormalizedInput(entrada({ text: 'x'.repeat(200_000) }))).toBe(true);
-    expect(isNormalizedInput(entrada({ text: 'x'.repeat(200_001) }))).toBe(false);
+    expect(isWireInput(toWire(entrada({ text: 'x'.repeat(200_000) })))).toBe(true);
+    expect(isWireInput(toWire(entrada({ text: 'x'.repeat(200_001) })))).toBe(false);
   });
 
   it('acepta píxeles coherentes y rechaza los que no cuadran', () => {
     const ok = { width: 2, height: 2, data: new Uint8ClampedArray(2 * 2 * 4) };
-    expect(isNormalizedInput(entrada({ modality: 'image', pixels: ok }))).toBe(true);
+    expect(isWireInput(toWire(entrada({ modality: 'image', pixels: ok })))).toBe(true);
 
     // Un búfer que no encaja con las dimensiones haría que un detector leyera
     // fuera de rango. Es el invariante que no se ve a simple vista.
     const corto = { width: 4, height: 4, data: new Uint8ClampedArray(8) };
-    expect(isNormalizedInput(entrada({ modality: 'image', pixels: corto }))).toBe(false);
+    expect(isWireInput(toWire(entrada({ modality: 'image', pixels: corto })))).toBe(false);
 
     const enorme = { width: 100_000, height: 1, data: new Uint8ClampedArray(400_000) };
-    expect(isNormalizedInput(entrada({ modality: 'image', pixels: enorme }))).toBe(false);
+    expect(isWireInput(toWire(entrada({ modality: 'image', pixels: enorme })))).toBe(false);
   });
 
   it('rechaza bytes crudos que no son un Uint8Array', () => {
-    expect(isNormalizedInput({ ...entrada(), rawBytes: [1, 2, 3] })).toBe(false);
-    expect(isNormalizedInput(entrada({ rawBytes: new Uint8Array([1, 2]) }))).toBe(true);
+    expect(isWireInput({ ...toWire(entrada()), rawBytesB64: 'no es base64!!' })).toBe(false);
+    expect(isWireInput(toWire(entrada({ rawBytes: new Uint8Array([1, 2]) })))).toBe(true);
   });
 
   it('valida domHints si viene', () => {
     expect(
-      isNormalizedInput(entrada({ domHints: { isArticle: true, isUserGenerated: false } })),
+      isWireInput(toWire(entrada({ domHints: { isArticle: true, isUserGenerated: false } }))),
     ).toBe(true);
-    expect(isNormalizedInput({ ...entrada(), domHints: { isArticle: 'sí' } })).toBe(false);
+    expect(isWireInput({ ...toWire(entrada()), domHints: { isArticle: 'sí' } })).toBe(false);
   });
 
   it('rechaza lo que ni siquiera es un objeto', () => {
     for (const v of [null, undefined, 42, 'texto', [], true]) {
-      expect(isNormalizedInput(v)).toBe(false);
+      expect(isWireInput(v)).toBe(false);
     }
   });
 });
@@ -280,7 +280,7 @@ describe('extremo a extremo · service worker ↔ documento offscreen', () => {
 
   it('un análisis completo va y vuelve por el puerto', async () => {
     const { host, servidor, f } = montar(LLR_FUERTE);
-    const veredicto = await host.run('infer', entrada(), isVerdict);
+    const veredicto = await host.run('infer', toWire(entrada()), isVerdict);
 
     expect(veredicto.hash).toBe(HASH);
     expect(veredicto.band).toBe(Band.StrongSignal);
@@ -291,14 +291,14 @@ describe('extremo a extremo · service worker ↔ documento offscreen', () => {
 
   it('una señal más floja llega como banda débil, no como fuerte', async () => {
     const { host, servidor } = montar(LLR_DEBIL);
-    const veredicto = await host.run('infer', entrada(), isVerdict);
+    const veredicto = await host.run('infer', toWire(entrada()), isVerdict);
     expect(veredicto.band).toBe(Band.WeakSignal);
     servidor.dispose();
   });
 
   it('sin evidencia se abstiene en lugar de inventarse una banda', async () => {
     const { host, servidor } = montar(0);
-    const veredicto = await host.run('infer', entrada(), isVerdict);
+    const veredicto = await host.run('infer', toWire(entrada()), isVerdict);
     expect(veredicto.band).toBe(Band.InsufficientEvidence);
     expect(veredicto.abstentionReason).toBeDefined();
     servidor.dispose();
@@ -310,7 +310,7 @@ describe('extremo a extremo · service worker ↔ documento offscreen', () => {
    */
   it('un texto por debajo del mínimo se abstiene con su motivo', async () => {
     const { host, servidor } = montar(LLR_FUERTE);
-    const veredicto = await host.run('infer', entrada({ tokenCount: 20 }), isVerdict);
+    const veredicto = await host.run('infer', toWire(entrada({ tokenCount: 20 })), isVerdict);
     expect(veredicto.band).toBe(Band.InsufficientEvidence);
     expect(veredicto.abstentionReason).toBe('TOO_SHORT');
     servidor.dispose();
@@ -319,7 +319,7 @@ describe('extremo a extremo · service worker ↔ documento offscreen', () => {
   it('una entrada mal formada la rechaza el servidor, no el kernel', async () => {
     const { host, servidor } = montar();
     await expect(
-      host.run('infer', { ...entrada(), hash: 'basura' }, isVerdict),
+      host.run('infer', { ...toWire(entrada()), hash: 'basura' }, isVerdict),
     ).rejects.toMatchObject({ code: ErrorCode.BadRequest });
     servidor.dispose();
   });
@@ -328,7 +328,7 @@ describe('extremo a extremo · service worker ↔ documento offscreen', () => {
     const { host, servidor } = montar(LLR_FUERTE);
     const hashes = ['b', 'c', 'd'].map((c) => c.repeat(64));
     const veredictos = await Promise.all(
-      hashes.map((hash) => host.run('infer', entrada({ hash }), isVerdict)),
+      hashes.map((hash) => host.run('infer', toWire(entrada({ hash })), isVerdict)),
     );
     expect(veredictos.map((v) => v.hash)).toEqual(hashes);
     servidor.dispose();
@@ -346,7 +346,7 @@ describe('extremo a extremo · service worker ↔ documento offscreen', () => {
     });
     const host = new ChromiumRuntimeHost({ api: f.api });
 
-    await expect(host.run('infer', entrada(), isVerdict)).rejects.toMatchObject({
+    await expect(host.run('infer', toWire(entrada()), isVerdict)).rejects.toMatchObject({
       code: ErrorCode.Internal,
     });
     servidor.dispose();
@@ -362,7 +362,7 @@ describe('extremo a extremo · service worker ↔ documento offscreen', () => {
     });
     const host = new ChromiumRuntimeHost({ api: f.api });
 
-    await expect(host.run('infer', entrada(), isVerdict)).rejects.toMatchObject({
+    await expect(host.run('infer', toWire(entrada()), isVerdict)).rejects.toMatchObject({
       code: ErrorCode.Internal,
       message: 'error interno',
     });
@@ -384,7 +384,7 @@ describe('extremo a extremo · service worker ↔ documento offscreen', () => {
     const data = new Uint8ClampedArray(2 * 2 * 4).fill(7);
     await host.run(
       'infer',
-      entrada({ modality: 'image', pixels: { width: 2, height: 2, data } }),
+      toWire(entrada({ modality: 'image', pixels: { width: 2, height: 2, data } })),
       isVerdict,
     );
 
@@ -394,22 +394,55 @@ describe('extremo a extremo · service worker ↔ documento offscreen', () => {
   });
 
   /**
-   * Una carga no clonable es un error de programación. Si el transporte lo
-   * absorbiera, se convertiría en una petición que jamás vuelve.
+   * `chrome.runtime` serializa como JSON, y JSON hace dos cosas distintas con
+   * lo que no sabe representar: una función la borra en silencio, una
+   * referencia circular la lanza. Ambas deben acabar en fallo visible, nunca en
+   * una petición que jamás vuelve.
    */
-  it('una carga que no cruza la frontera falla en voz alta', async () => {
+  it('una función en la carga desaparece y el servidor lo detecta', async () => {
     const { host, servidor } = montar();
-    const noClonable = { ...entrada(), domHints: { isArticle: () => true } };
-    await expect(host.run('infer', noClonable, isVerdict)).rejects.toThrow(/clon|cloned/i);
+    const conFuncion = { ...toWire(entrada()), domHints: { isArticle: () => true } };
+    await expect(host.run('infer', conFuncion, isVerdict)).rejects.toMatchObject({
+      code: ErrorCode.BadRequest,
+    });
+    servidor.dispose();
+  });
+
+  it('una referencia circular falla en voz alta en lugar de colgarse', async () => {
+    const { host, servidor } = montar();
+    const circular: Record<string, unknown> = { ...toWire(entrada()) };
+    circular['yo'] = circular;
+    await expect(host.run('infer', circular, isVerdict)).rejects.toThrow(/circular/i);
+    servidor.dispose();
+  });
+
+  /** La regresión que solo apareció al cargar la extensión en Chromium real. */
+  it('los bytes crudos sobreviven al puerto, que serializa como JSON', async () => {
+    const f = fakeChromium();
+    let recibido: NormalizedInput | undefined;
+    const servidor = startInferenceServer({
+      api: f.api,
+      analyze: async (i) => {
+        recibido = i;
+        return pipelineCon(0).analyze(entrada());
+      },
+    });
+    const host = new ChromiumRuntimeHost({ api: f.api });
+
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    await host.run('infer', toWire(entrada({ modality: 'image', rawBytes: png })), isVerdict);
+
+    expect(recibido?.rawBytes).toBeInstanceOf(Uint8Array);
+    expect([...(recibido?.rawBytes ?? [])]).toEqual([...png]);
     servidor.dispose();
   });
 
   it('tras teardown, la siguiente llamada reconstruye el canal y sigue funcionando', async () => {
     const { host, servidor, f } = montar(LLR_FUERTE);
-    await host.run('infer', entrada(), isVerdict);
+    await host.run('infer', toWire(entrada()), isVerdict);
     await host.teardown();
 
-    const veredicto = await host.run('infer', entrada(), isVerdict);
+    const veredicto = await host.run('infer', toWire(entrada()), isVerdict);
     expect(veredicto.band).toBe(Band.StrongSignal);
     expect(f.calls.connect).toBe(2);
     servidor.dispose();

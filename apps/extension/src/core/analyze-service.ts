@@ -1,6 +1,7 @@
 import { RpcServer } from '@xpx/ipc';
-import type { NormalizedInput, Verdict } from '@xpx/kernel';
-import { isNormalizedInput, isVerdict } from '../messaging/wire.js';
+import type { Verdict } from '@xpx/kernel';
+import { isVerdict, isWireInput } from '../messaging/wire.js';
+import type { WireInput } from '../messaging/wire.js';
 import type { ExtensionApi, PortLike } from '../platform/extension-api.js';
 import { portTransport } from '../platform/port-transport.js';
 import type { RuntimeHost } from '../platform/runtime-host.js';
@@ -57,8 +58,10 @@ export function startAnalyzeService(opts: AnalyzeServiceOptions): AnalyzeService
       return;
     }
 
-    const server = new RpcServer(portTransport(port)).on('analyze', isNormalizedInput, (input) =>
-      analyzeOnce(input),
+    // Se reenvía la forma de cable sin tocarla: decodificar aquí para volver a
+    // codificar en el siguiente salto sería trabajo puro de ida y vuelta.
+    const server = new RpcServer(portTransport(port)).on('analyze', isWireInput, (wire) =>
+      analyzeOnce(wire),
     );
     servers.set(port, server);
 
@@ -68,24 +71,24 @@ export function startAnalyzeService(opts: AnalyzeServiceOptions): AnalyzeService
     });
   };
 
-  async function analyzeOnce(input: NormalizedInput): Promise<Verdict> {
-    const hit = cache.get(input.hash);
+  async function analyzeOnce(wire: WireInput): Promise<Verdict> {
+    const hit = cache.get(wire.hash);
     if (hit !== undefined) return hit;
 
-    const yaPedido = enVuelo.get(input.hash);
+    const yaPedido = enVuelo.get(wire.hash);
     if (yaPedido !== undefined) return yaPedido;
 
     const trabajo = opts.host
-      .run<NormalizedInput, Verdict>('infer', input, isVerdict)
+      .run<WireInput, Verdict>('infer', wire, isVerdict)
       .then((verdict) => {
-        cache.set(input.hash, verdict);
+        cache.set(wire.hash, verdict);
         return verdict;
       })
       .finally(() => {
-        enVuelo.delete(input.hash);
+        enVuelo.delete(wire.hash);
       });
 
-    enVuelo.set(input.hash, trabajo);
+    enVuelo.set(wire.hash, trabajo);
     return trabajo;
   }
 

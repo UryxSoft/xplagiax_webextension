@@ -60,10 +60,12 @@ export function portPair(name: string, farSender?: MessageSender): FakePortPair 
       postMessage: (m) => {
         // Chrome lanza al escribir en un puerto muerto. El transporte lo absorbe.
         if (!alive) throw new Error('Attempting to use a disconnected port object');
-        // Clonado real, síncrono y antes de entregar, igual que el navegador:
-        // así una carga no clonable falla en el test y no se cuela hasta
-        // producción disfrazada de petición que nunca vuelve.
-        const copia = structuredClone(m);
+        // Serialización JSON, síncrona y antes de entregar, porque es lo que
+        // hace `chrome.runtime` de verdad. Usar `structuredClone` aquí sería
+        // más permisivo que el navegador: preserva `Uint8Array` y `Map`, que
+        // JSON destruye, y escondería fallos que solo aparecerían al cargar la
+        // extensión en un navegador real. Ya pasó una vez.
+        const copia: unknown = JSON.parse(JSON.stringify(m));
         queueMicrotask(() => {
           deliver(other, copia);
         });

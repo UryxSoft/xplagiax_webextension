@@ -1,103 +1,107 @@
-# Cambios — del kernel a una extensión instalable
+# Cambios — del kernel a una extensión que carga en un navegador real
 
-Base: `d659185` (merge de la PR #1). Tres commits. Sin push.
-
-## Cómo aplicarlo
+Base: `d659185` (merge de la PR #1). Cuatro commits. Sin push.
 
 ```bash
-git am 0001-*.patch 0002-*.patch 0003-*.patch
+git am 0001-*.patch 0002-*.patch 0003-*.patch 0004-*.patch
 pnpm install
-pnpm test        # 246 en verde
-pnpm typecheck   # limpio en los 5 paquetes
-pnpm build       # produce las 5 extensiones
+pnpm test        # 248 en verde
+pnpm typecheck   # limpio
+pnpm build       # publica las 5 extensiones
 ```
 
-## Qué hay ahora que antes no había
+Luego, en Chrome: `chrome://extensions` → modo desarrollador → **Cargar
+descomprimida** → apunta a `chrome_extension/`.
 
-El camino completo del producto, cerrado y probado sin navegador:
+---
+
+## ¿Se puede probar ya en un navegador? Sí y no
+
+**Sí carga**, y lo he verificado en Chromium real, no de palabra:
 
 ```
-content script ──analyze──▶ background ──infer──▶ documento offscreen ──▶ kernel
+✓ el service worker se registra
+✓ el manifiesto es MV3
+✓ los textos se resuelven desde _locales
+✓ sin host_permissions en la instalación
+✓ el documento offscreen arranca
+✓ el texto recorre service worker → offscreen → kernel
+✓ sin detector de texto, el kernel se abstiene
+✓ los bytes crudos sobreviven al puerto (regresión base64)
+✓ una imagen sin credenciales no se vuelve sospechosa
 ```
 
-Cárgalo en Chrome con «Cargar descomprimida» apuntando a `chrome_extension/`.
+Esa prueba está en el repositorio: `apps/extension/e2e/smoke.mjs`, con
+`pnpm --filter @xpx/extension test:e2e`.
 
-## Commit 1 — IPC tipado y host offscreen
+**Pero no vas a ver nada.** No hay content script, ni popup, ni overlay. La
+extensión carga, el service worker arranca y se queda esperando una petición
+que nadie hace. Para observarla hoy hay que inspeccionar el service worker
+desde `chrome://extensions` y hablar con el puerto a mano, que es exactamente
+lo que hace el smoke test.
 
-`packages/ipc`: RPC tipado sobre un `Transport` abstracto, cero dependencias.
-Validación en ambos extremos con predicados de tipo en vez de Zod o Valibot —
-el paquete corre también en el content script, con 15 KB gzip de presupuesto.
-Los errores internos se sanean antes de salir: un mensaje de excepción puede
-llevar rutas o contenido, y el content script vive en la página del usuario.
+Faltan tres piezas para que sea observable:
 
-`ChromiumRuntimeHost`: documento offscreen, con los dos problemas de ciclo de
-vida de MV3 resueltos — la carrera de arranque y la caída del puerto.
+1. **Content script** — extraer bloques del DOM y pedir el análisis (hito S4).
+2. **Overlay** — pintar el resultado en shadow root cerrado (S7).
+3. **Popup** — el Trust Score y los dos switches (S8).
 
-## Commit 2 — el otro extremo del puerto
+---
 
-`startInferenceServer`: lo que corre dentro del documento offscreen. Impone por
-primera vez **en código** la regla de arquitectura §11. `runtime.onConnect` no
-distingue quién llama: un content script puede invocar `runtime.connect` igual
-que el background, así que comprobar `sender.tab` es lo único que separa ambos
-contextos.
+## El fallo que solo apareció en el navegador
 
-`messaging/wire.ts`: los validadores de la frontera. El `hash` se exige como
-sha256 hexadecimal porque es la clave de caché y lo único que se persiste; el
-texto lleva techo porque quien envía puede ser un content script comprometido;
-y las dimensiones de los píxeles se contrastan con el tamaño del búfer, que es
-el invariante que no se ve y cuya violación sería una lectura fuera de rango.
+Merece contarse porque cambia cómo hay que probar esto.
 
-## Commit 3 — entrypoints, normalización y artefacto real
+`chrome.runtime` **serializa los mensajes como JSON**, no con structured clone.
+Un `Uint8Array` no sobrevive: llega al otro extremo como `{"0":137,"1":80,…}`.
+El validador lo rechazaba correctamente, así que la única modalidad que hoy
+produce evidencia real —la procedencia, que necesita los bytes crudos— estaba
+rota de punta a punta. El texto sí funcionaba, que es lo que lo hacía difícil
+de ver.
 
-`content/normalize.ts`: normaliza a NFC y elimina caracteres de ancho cero. Dos
-motivos que apuntan al mismo sitio — dos textos que se leen igual deben hashear
-igual, o la caché no sirve; e insertar invisibles entre letras es la evasión más
-barata contra un detector. Los homoglifos **no** se tocan: esos sí cambian el
-significado y su tratamiento es de un detector.
+El doble de puerto de los tests usaba `structuredClone`, que **sí** preserva los
+tipados, y por eso lo ocultaba. Un doble siempre es una hipótesis sobre el
+navegador, y esa era falsa. Ahora serializa por JSON, igual que Chrome, y el
+binario viaja en base64 con `toWire`/`fromWire` en las fronteras.
 
-`core/analyze-service.ts`: el canal del background, imagen especular del
-servidor de inferencia — aquel rechaza a quien tenga `sender.tab`, este lo
-exige. Entre los dos no queda un tercer camino hacia el motor.
+Del mismo tirón salió un segundo fallo: `portTransport` reconocía lo que debía
+propagar y se tragaba el resto, con lo que una carga circular acababa como
+petición que jamás vuelve — justo lo que ese `catch` pretendía evitar. Ahora
+reconoce lo benigno (puerto caído) y deja salir lo desconocido.
 
-## Lo que debes saber, y no es agradable
+---
+
+## Lo que sigue sin existir, y conviene no olvidarlo
 
 **No hay detector de texto.** El registro planea cero detectores para texto, así
-que hoy el kernel se abstiene siempre con `NO_EVIDENCE`. Está fijado por test a
-propósito, para que el test caiga el día que llegue la estilometría (hito S4) y
-no antes. Es la respuesta correcta: un llr sin su conjunto de calibración no
-significa nada (ADR-006), e inventar uno para que «salga algo» sería peor que
-callarse. Las imágenes sí producen veredicto real vía procedencia.
+que el kernel se abstiene siempre con `NO_EVIDENCE`. Está fijado por test a
+propósito. Es la respuesta correcta mientras no haya un detector calibrado —un
+llr sin su conjunto de calibración no significa nada— pero significa que hoy la
+extensión no detecta texto generado. Las imágenes sí dan evidencia real por
+procedencia.
 
-**Tres fallos previos impedían tener artefacto**, y estaban ahí desde antes:
-
-1. Los scripts pasaban `wxt build --outDir`, que no es una opción de wxt. El
-   build fallaba antes de compilar nada.
-2. `default_locale: 'es'` sin árbol `_locales`. El navegador se niega a cargar
-   una extensión así.
-3. Firefox y Safari se construían como MV2, contra la matriz de compatibilidad.
-
-**Choque de versiones**: wxt 0.21 exige Vite 6 y vitest 2 arrastraba Vite 5, con
-lo que el build ni arrancaba. Se sube a vitest 3 y Vite 6.
-
-**`pnpm lint` sigue roto** y no se toca aquí: el script es `eslint .` y no hay
-ni configuración de ESLint ni la dependencia. Es el único punto de `pnpm check`
+**`pnpm lint` sigue roto**, de antes: el script es `eslint .` y no hay ni
+configuración de ESLint ni la dependencia. Es el único punto de `pnpm check`
 que no pasa.
+
+**No hay CI.** No existe `.github/workflows/`.
+
+---
 
 ## Estado frente al plan del MVP
 
-| Hito | Antes | Ahora |
-|---|---|---|
-| S1 · fundamentos y build | parcial | **build instalable en 5 navegadores**; siguen faltando ESLint y CI |
-| S2 · contratos del kernel | completo | completo |
-| S3 · procedencia | completo | completo |
-| S4 · estilometría + content script | parcial | normalización lista; **falta el detector y la extracción del DOM** |
-| S5 · RuntimeHost, Workers, ORT | parcial | host y cableado completos; faltan Workers, ORT y ModelManager |
+| Hito | Estado |
+|---|---|
+| S1 · fundamentos y build | build instalable en 5 navegadores; faltan ESLint y CI |
+| S2 · contratos del kernel | completo |
+| S3 · procedencia | completo, y verificado en navegador real |
+| S4 · estilometría + content script | normalización lista; **faltan el detector y la extracción del DOM** |
+| S5 · RuntimeHost, Workers, ORT | host y cableado completos; faltan Workers, ORT y ModelManager |
+| S6–S10 | sin empezar |
 
-## Lo siguiente
+## Siguiente paso recomendado
 
-1. **Detector estilométrico Tier 0.** Es el que desbloquea cualquier veredicto
-   de texto. Necesita corpus para calibrar: sin él solo se pueden inventar
-   números, que es justo lo que el diseño prohíbe.
-2. **Extracción del DOM** en el content script: bloques visibles, sin
-   boilerplate, con las pistas de `domHints`.
-3. **Motor de overlay** en shadow root cerrado, sin mutar el DOM del anfitrión.
+El **content script** (S4, segunda mitad): extracción de bloques visibles,
+normalización —ya escrita— y petición por el canal `analyze`. Es lo más barato
+que convierte «carga pero no se ve nada» en «se ve funcionar», y no depende de
+tener detector de texto: sobre imágenes ya daría veredictos reales.

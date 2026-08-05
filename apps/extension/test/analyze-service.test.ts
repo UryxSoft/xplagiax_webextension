@@ -11,7 +11,7 @@ import { startInferenceServer } from '../src/platform/inference-server.js';
 import { ChromiumRuntimeHost } from '../src/platform/chromium-host.js';
 import { createPipeline } from '../src/core/composition.js';
 import { prepareText } from '../src/content/normalize.js';
-import { isVerdict } from '../src/messaging/wire.js';
+import { isVerdict, toWire } from '../src/messaging/wire.js';
 import { portTransport } from '../src/platform/port-transport.js';
 import { fakeChromium } from './fake-browser.js';
 import type { RuntimeHost } from '../src/platform/runtime-host.js';
@@ -115,7 +115,7 @@ describe('startAnalyzeService · análisis', () => {
 
     const cliente = clienteDeContenido(f);
     const entrada = await prepareText(TEXTO, 'es');
-    const v = await cliente.request('analyze', entrada, isVerdict);
+    const v = await cliente.request('analyze', toWire(entrada), isVerdict);
 
     expect(v.hash).toBe(entrada.hash);
     expect(v.band).toBe(Band.WeakSignal);
@@ -142,8 +142,8 @@ describe('startAnalyzeService · análisis', () => {
 
     const cliente = clienteDeContenido(f);
     const entrada = await prepareText(TEXTO, 'es');
-    await cliente.request('analyze', entrada, isVerdict);
-    await cliente.request('analyze', entrada, isVerdict);
+    await cliente.request('analyze', toWire(entrada), isVerdict);
+    await cliente.request('analyze', toWire(entrada), isVerdict);
 
     expect(llamadas).toHaveLength(1);
     servicio.dispose();
@@ -168,9 +168,9 @@ describe('startAnalyzeService · análisis', () => {
     const cliente = clienteDeContenido(f);
     const entrada = await prepareText(TEXTO, 'es');
     const peticiones = [
-      cliente.request('analyze', entrada, isVerdict),
-      cliente.request('analyze', entrada, isVerdict),
-      cliente.request('analyze', entrada, isVerdict),
+      cliente.request('analyze', toWire(entrada), isVerdict),
+      cliente.request('analyze', toWire(entrada), isVerdict),
+      cliente.request('analyze', toWire(entrada), isVerdict),
     ];
     await new Promise((r) => setTimeout(r, 0));
     resolver?.(veredictoDe(entrada));
@@ -187,8 +187,8 @@ describe('startAnalyzeService · análisis', () => {
     const servicio = startAnalyzeService({ api: f.api, host });
 
     const cliente = clienteDeContenido(f);
-    await cliente.request('analyze', await prepareText(TEXTO, 'es'), isVerdict);
-    await cliente.request('analyze', await prepareText(`${TEXTO} extra`, 'es'), isVerdict);
+    await cliente.request('analyze', toWire(await prepareText(TEXTO, 'es')), isVerdict);
+    await cliente.request('analyze', toWire(await prepareText(`${TEXTO} extra`, 'es')), isVerdict);
 
     expect(llamadas).toHaveLength(2);
     servicio.dispose();
@@ -208,7 +208,7 @@ describe('startAnalyzeService · análisis', () => {
 
     const cliente = clienteDeContenido(f);
     await expect(
-      cliente.request('analyze', await prepareText(TEXTO, 'es'), isVerdict),
+      cliente.request('analyze', toWire(await prepareText(TEXTO, 'es')), isVerdict),
     ).rejects.toMatchObject({ code: ErrorCode.Internal, message: 'error interno' });
     servicio.dispose();
   });
@@ -234,8 +234,8 @@ describe('startAnalyzeService · análisis', () => {
 
     const cliente = clienteDeContenido(f);
     const entrada = await prepareText(TEXTO, 'es');
-    await expect(cliente.request('analyze', entrada, isVerdict)).rejects.toBeDefined();
-    await expect(cliente.request('analyze', entrada, isVerdict)).resolves.toBeDefined();
+    await expect(cliente.request('analyze', toWire(entrada), isVerdict)).rejects.toBeDefined();
+    await expect(cliente.request('analyze', toWire(entrada), isVerdict)).resolves.toBeDefined();
     expect(llamadas).toHaveLength(2);
     servicio.dispose();
   });
@@ -300,7 +300,7 @@ describe('extremo a extremo · content script → background → offscreen → k
 
     const cliente = clienteDeContenido(f);
     const entrada = await prepareText(TEXTO, 'es');
-    const veredicto = await cliente.request('analyze', entrada, isVerdict);
+    const veredicto = await cliente.request('analyze', toWire(entrada), isVerdict);
 
     expect(veredicto.hash).toBe(entrada.hash);
     // Sin detector de texto todavía, la respuesta correcta es abstenerse.
@@ -325,7 +325,7 @@ describe('extremo a extremo · content script → background → offscreen → k
     const cliente = clienteDeContenido(f);
     const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
     const { prepareImage } = await import('../src/content/normalize.js');
-    const veredicto = await cliente.request('analyze', await prepareImage(png), isVerdict);
+    const veredicto = await cliente.request('analyze', toWire(await prepareImage(png)), isVerdict);
 
     expect(veredicto.llrTotal).toBe(0);
     expect(veredicto.evidence).toHaveLength(1);
