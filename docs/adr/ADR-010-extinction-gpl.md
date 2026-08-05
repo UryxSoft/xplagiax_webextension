@@ -1,7 +1,13 @@
 # ADR-010 · Integración de Extinction y el problema de la GPL-3.0
 
 ## Estado
-Propuesto — requiere dictamen legal antes de pasar a Aceptado
+**Aceptado con modificación** — el titular decidió incluir Extinction. La ADR recoge la decisión
+tomada y el diseño que la hace segura. Sigue requiriendo dictamen legal de confirmación.
+
+> **Revisión.** La versión inicial de esta ADR proponía no incorporar Extinction en absoluto. El
+> titular reafirmó la instrucción de incluirlo, como etapa de validación. Se acata. Lo que sigue
+> describe cómo se incluye sin que la GPL-3.0 alcance al SDK comercial y sin que un método del
+> ~80 % de precisión pueda causar un falso positivo.
 
 ## Contexto
 
@@ -35,14 +41,58 @@ el código fuente correspondiente del conjunto, incluido todo aquello que se con
 
 ## Decisión
 
-**No se incorpora código de Extinction en ninguna parte del producto.**
+Extinction se incluye **como etapa de validación**, en un paquete aislado y bajo su propia
+licencia. Tres piezas hacen que eso funcione.
 
-En su lugar, se implementa un detector `stylometry` propio en Tier 0 a partir del **método
-publicado**, no del código. La distinción es la que separa lo lícito de lo que no lo es: las
-ideas, algoritmos y fórmulas matemáticas no son objeto de derecho de autor; la expresión concreta
-en código sí lo es.
+### 1 · Aislamiento por dirección de dependencia
 
-Procedimiento de implementación limpia, de obligado cumplimiento:
+```
+@xpx/extinction-validator  (GPL-3.0-or-later)
+          │  depende de
+          ▼
+@xpx/kernel                (Apache-2.0)   ← no sabe que el validador existe
+          ▲
+          │  depende de
+@xplagiax/kernel  = SDK comercial          ← no incluye el validador
+```
+
+La extensión sí empaqueta el validador y **se distribuye bajo GPL-3.0** con su fuente
+correspondiente. Eso es coherente con el compromiso de abrir las partes críticas del producto
+(`09-riesgos-privacidad.md` §7). El SDK, que es la vía de negocio a proteger, no lo incluye y
+sigue siendo licenciable comercialmente.
+
+La dirección de la dependencia no se confía a la disciplina de nadie: hay tests de arquitectura
+en `packages/kernel/test/architecture.test.ts` que fallan el build si el kernel llega a importar
+el paquete GPL o si adquiere cualquier dependencia.
+
+### 2 · Monotonía hacia la cautela
+
+El pipeline impone que una etapa de validación solo pueda volver el veredicto **más cauto**:
+degradar la banda o forzar la abstención. No existe ninguna acción que eleve la confianza.
+
+Esa es la propiedad que permite incorporar un método con ~80 % de precisión declarada en un
+producto cuyo objetivo es una tasa de falsos positivos por debajo del 1 %: **en el peor caso, una
+heurística equivocada hace perder una detección; nunca acusa a nadie.** La garantía la impone el
+pipeline, no la etapa, y está cubierta por tests.
+
+En la práctica el validador funciona como red de seguridad: cuando el clasificador de Tier 1 grita
+"generado" y la heurística ve un texto claramente humano, gana la duda. Hay un test que demuestra
+exactamente ese rescate de un falso positivo.
+
+### 3 · Biblioteca de patrones propia y calibración propia
+
+La lista de expresiones regulares **no se copia**: es la aportación más original de Extinction y
+la parte más claramente protegible. La nuestra es propia, deliberadamente pequeña, con
+puntuaciones bajas, y se calibra contra nuestro corpus de equidad.
+
+Por la misma razón, el umbral de sospecha **no es el 0,65 que Extinction documenta**: ese valor
+está calibrado para su biblioteca, que es mucho mayor. Copiarlo sería el error que previene
+ADR-006 — un umbral sin su calibración no significa nada. El nuestro sale de la separación medida
+con nuestra biblioteca y viaja con su `calibrationId`.
+
+### Procedimiento de implementación limpia
+
+Sigue siendo de obligado cumplimiento para el código que escribimos:
 
 1. La especificación del detector se redacta a partir del README público y de la literatura de
    estilometría (TTR, burstiness, normalización sigmoide son técnicas conocidas y anteriores a
@@ -58,9 +108,9 @@ Procedimiento de implementación limpia, de obligado cumplimiento:
 Se atribuye públicamente a Extinction la inspiración del enfoque, en el README y en la página de
 metodología. Es lo correcto y no cuesta nada.
 
-**Además, se contacta con el autor** para explorar una licencia dual. Si concede una excepción de
-licencia o una licencia permisiva para nuestro uso, esta ADR se revisa y la integración directa
-pasa a ser la opción preferente: reutilizar es mejor que reimplementar.
+**Se contacta con el autor** para explorar una licencia dual. Si concede una excepción o una
+licencia permisiva, el paquete puede relicenciarse y el SDK ganaría acceso al validador. Reutilizar
+es mejor que reimplementar; simplemente no a costa del modelo de negocio.
 
 ## Ubicación en la arquitectura
 
@@ -88,10 +138,14 @@ coste cero que a uno de 242 MB.
 
 ## Alternativas consideradas
 
-**Integrar el código y publicar todo bajo GPL-3.0.** Coherente con el compromiso de abrir las
-partes críticas ([`09-riesgos-privacidad.md`](../09-riesgos-privacidad.md#7-verificabilidad)).
-Rechazada: elimina el SDK comercial, que es la vía de mayor valor del roadmap. Abrir el kernel
-bajo una licencia permisiva logra la verificabilidad sin renunciar al negocio.
+**Publicar TODO bajo GPL-3.0, incluidos kernel y SDK.** Es la lectura maximalista y la más
+sencilla de defender jurídicamente. Rechazada: elimina el SDK comercial, que es la vía de mayor
+valor del roadmap. La decisión adoptada conserva la verificabilidad —la extensión, que es lo que
+el usuario ejecuta, es GPL y auditable— sin renunciar al negocio.
+
+**No incorporar Extinction en absoluto.** Era la propuesta original de esta ADR. Descartada por
+decisión del titular. A cambio, el diseño adoptado limita el daño: aislamiento por dirección de
+dependencia y monotonía hacia la cautela.
 
 **Aislar Extinction en un proceso separado con comunicación por IPC.** Es el argumento clásico de
 "frontera de proceso" para evitar el contagio de la GPL. Rechazada: su solidez jurídica es
@@ -116,6 +170,12 @@ independiente del ML.
 - Se evita una dependencia externa en el núcleo.
 
 ### Negativas
+- **La extensión queda bajo GPL-3.0.** Es la consecuencia real de incluir Extinction y hay que
+  asumirla con los ojos abiertos: obliga a publicar el fuente correspondiente de la extensión y
+  restringe qué código propietario puede acabar dentro de ella. El SDK y el kernel quedan a salvo,
+  pero la extensión no.
+- Cualquier componente futuro que se quiera mantener cerrado **no puede vivir en la extensión**;
+  tendrá que residir en el SDK o en un servicio. Es una restricción permanente de diseño.
 - Hay que reimplementar trabajo que ya existe. Semanas de esfuerzo evitables si hubiera licencia
   permisiva.
 - El procedimiento de implementación limpia impone disciplina y documentación que ralentizan.

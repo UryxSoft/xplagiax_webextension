@@ -1,0 +1,20 @@
+{
+  "name": "@xpx/kernel",
+  "version": "0.1.0",
+  "description": "Núcleo de detección. TypeScript puro: sin DOM, sin APIs de extensión.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

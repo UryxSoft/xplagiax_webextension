@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // ADR-001: sin "DOM". Si alguien usa document, window o chrome.*, no compila.
+    "composite": true,
+    "lib": ["ES2022"],
+    "types": [],
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*"]
+}

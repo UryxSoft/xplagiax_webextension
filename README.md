@@ -4,8 +4,35 @@
 > (texto, imagen, vídeo) que un usuario encuentra en la web. Procesamiento local por defecto.
 > Ningún contenido del usuario sale del dispositivo sin consentimiento explícito.
 
-**Estado actual: fase de diseño. No hay código de aplicación todavía — por decisión explícita.**
-La arquitectura debe validarse antes de escribir la primera línea de producto.
+**Estado: arquitectura validada, desarrollo iniciado.** El kernel está implementado y probado.
+
+```bash
+pnpm install
+pnpm test        # 70 tests
+pnpm typecheck
+```
+
+## Estructura del código
+
+```
+packages/
+  kernel/                          Apache-2.0 · TypeScript puro, sin DOM, cero dependencias
+    contracts/                       Evidence, Detector, ValidationStage, Verdict
+    evidence/fusion.ts               fusión log-lineal con decorrelación
+    scoring/bands.ts                 bandas, umbrales y abstención
+    registry/ · pipeline/            registro y orquestación
+  detectors/
+    extinction-validator/          GPL-3.0 · AISLADO. Etapa de validación heurística
+apps/
+  extension/                       GPL-3.0 · un fuente, cinco artefactos
+    src/platform/                    único lugar con código específico de navegador
+chrome_extension/  firefox_extension/  edge_extesion/
+opera_extension/   Safari_extension/   ← destinos de build, no código fuente
+```
+
+Las reglas de arquitectura no están solo escritas: `packages/kernel/test/architecture.test.ts`
+falla el build si el kernel importa algo, si toca una API de navegador, o si la frontera de
+licencia con el paquete GPL se rompe.
 
 ---
 
