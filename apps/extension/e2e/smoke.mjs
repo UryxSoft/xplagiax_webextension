@@ -113,6 +113,37 @@ try {
     'una imagen sin credenciales no se vuelve sospechosa',
     evidencia?.llr === 0 && evidencia?.reliability === 0,
   );
+
+  // --- Superficie de usuario -----------------------------------------------
+  comprobar(
+    'hay un icono que pulsar, con su popup',
+    manifest.action?.default_popup === 'popup.html',
+    manifest.action?.default_popup,
+  );
+  comprobar(
+    'no se declara ningún content_script',
+    manifest.content_scripts === undefined,
+    'inyección bajo demanda, sin permiso de host en la instalación',
+  );
+
+  const extId = new URL(sw.url()).host;
+  const popup = await ctx.newPage();
+  await popup.goto(`chrome-extension://${extId}/popup.html`);
+  const boton = await popup.textContent('#analizar');
+  comprobar('el popup se abre y ofrece la acción', boton?.includes('Analizar') === true, boton);
+  await popup.close();
+
+  /*
+   * Lo que NO se prueba aquí, y conviene saber por qué: la inyección en una
+   * página real exige `activeTab`, que solo concede un clic humano sobre el
+   * icono de la barra. Playwright no puede pulsar la barra del navegador, y
+   * concederle permiso de host a la extensión para sortearlo probaría una
+   * configuración que no es la que se publica.
+   *
+   * Ese recorrido está cubierto en test/analyze-page.test.ts, que ejercita
+   * extracción, análisis e insignia sobre un DOM real con las tres superficies
+   * montadas. Aquí se comprueba lo que solo el navegador puede confirmar.
+   */
 } finally {
   await ctx.close();
 }

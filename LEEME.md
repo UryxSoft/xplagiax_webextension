@@ -1,107 +1,100 @@
-# Cambios — del kernel a una extensión que carga en un navegador real
+# Cambios — ya se puede ver funcionar en un navegador
 
-Base: `d659185` (merge de la PR #1). Cuatro commits. Sin push.
+Base: `d659185` (merge de la PR #1). Cinco commits. Sin push.
 
 ```bash
-git am 0001-*.patch 0002-*.patch 0003-*.patch 0004-*.patch
+git am 0001-*.patch 0002-*.patch 0003-*.patch 0004-*.patch 0005-*.patch
 pnpm install
-pnpm test        # 248 en verde
+pnpm test        # 278 en verde
 pnpm typecheck   # limpio
 pnpm build       # publica las 5 extensiones
 ```
 
-Luego, en Chrome: `chrome://extensions` → modo desarrollador → **Cargar
-descomprimida** → apunta a `chrome_extension/`.
+## Cómo probarlo
 
----
+1. Chrome → `chrome://extensions` → activa **Modo de desarrollador**.
+2. **Cargar descomprimida** → selecciona `chrome_extension/`.
+3. Abre cualquier artículo y **pulsa el icono de la extensión**.
+4. Pulsa «Analizar esta página». El resumen aparece abajo a la derecha.
 
-## ¿Se puede probar ya en un navegador? Sí y no
+`insignia.png` y `popup-claro.png` en este mismo tar son capturas reales,
+hechas en Chromium con la extensión cargada.
 
-**Sí carga**, y lo he verificado en Chromium real, no de palabra:
+**El paso 3 no es opcional.** Pulsar el icono es lo que concede `activeTab`;
+sin ese gesto la extensión no puede tocar la página. Es el nivel 1 de ADR-009,
+y por eso no se declara ningún `content_scripts`: hacerlo pediría permiso de
+host en la instalación y dispararía el aviso de «leer y cambiar todos tus datos
+en todos los sitios web».
 
-```
-✓ el service worker se registra
-✓ el manifiesto es MV3
-✓ los textos se resuelven desde _locales
-✓ sin host_permissions en la instalación
-✓ el documento offscreen arranca
-✓ el texto recorre service worker → offscreen → kernel
-✓ sin detector de texto, el kernel se abstiene
-✓ los bytes crudos sobreviven al puerto (regresión base64)
-✓ una imagen sin credenciales no se vuelve sospechosa
-```
+## Qué vas a ver, y qué no
 
-Esa prueba está en el repositorio: `apps/extension/e2e/smoke.mjs`, con
-`pnpm --filter @xpx/extension test:e2e`.
+**Vas a ver** el resumen con el número de bloques analizados y su distribución
+por bandas. En una página normal dirá «Evidencia insuficiente» para todo.
 
-**Pero no vas a ver nada.** No hay content script, ni popup, ni overlay. La
-extensión carga, el service worker arranca y se queda esperando una petición
-que nadie hace. Para observarla hoy hay que inspeccionar el service worker
-desde `chrome://extensions` y hablar con el puerto a mano, que es exactamente
-lo que hace el smoke test.
+**Eso no es un fallo.** No hay detector de texto todavía, así que el kernel se
+abstiene siempre con `NO_EVIDENCE`. La insignia lo dice explícitamente, porque
+callarlo haría pensar que el texto salió limpio cuando lo que pasa es que aún
+no hay quien lo examine.
 
-Faltan tres piezas para que sea observable:
+Para ver un veredicto **distinto** hace falta una imagen con credenciales C2PA
+—el detector de procedencia sí funciona— o esperar al detector estilométrico.
 
-1. **Content script** — extraer bloques del DOM y pedir el análisis (hito S4).
-2. **Overlay** — pintar el resultado en shadow root cerrado (S7).
-3. **Popup** — el Trust Score y los dos switches (S8).
+Dos limitaciones más, conocidas y documentadas en el código:
 
----
+- Las imágenes de un CDN sin CORS abierto no se pueden descargar desde la
+  página y quedan fuera del análisis. Es una consecuencia del nivel 1 de
+  permisos, no un error.
+- La insignia no resalta pasajes ni se superpone a las imágenes. Eso es el
+  motor de overlay, hito S7.
 
-## El fallo que solo apareció en el navegador
+## Qué trae cada commit
 
-Merece contarse porque cambia cómo hay que probar esto.
+1. **IPC tipado y host offscreen** — RPC sobre `Transport` abstracto, cero
+   dependencias; documento offscreen con la carrera de arranque de MV3 y la
+   caída del puerto resueltas.
+2. **Servidor de inferencia y contrato de cable** — impone en código que un
+   content script no pueda pedir inferencia; validadores de la frontera.
+3. **Entrypoints y build instalable** — arreglados tres fallos previos que lo
+   impedían: `--outDir` inexistente en wxt, `default_locale` sin `_locales`, y
+   Firefox/Safari construyéndose como MV2.
+4. **Arreglo del binario** — `chrome.runtime` serializa como JSON, no con
+   structured clone: un `Uint8Array` no sobrevive. Rompía la única modalidad
+   con evidencia real. Encontrado cargando la extensión en Chromium, no en los
+   tests; el doble de puerto usaba `structuredClone` y lo ocultaba.
+5. **S4** — extracción del DOM, insignia en página y popup.
 
-`chrome.runtime` **serializa los mensajes como JSON**, no con structured clone.
-Un `Uint8Array` no sobrevive: llega al otro extremo como `{"0":137,"1":80,…}`.
-El validador lo rechazaba correctamente, así que la única modalidad que hoy
-produce evidencia real —la procedencia, que necesita los bytes crudos— estaba
-rota de punta a punta. El texto sí funcionaba, que es lo que lo hacía difícil
-de ver.
+## Decisiones de la S4 que conviene conocer
 
-El doble de puerto de los tests usaba `structuredClone`, que **sí** preserva los
-tipados, y por eso lo ocultaba. Un doble siempre es una hipótesis sobre el
-navegador, y esa era falsa. Ahora serializa por JSON, igual que Chrome, y el
-binario viaja en base64 con `toWire`/`fromWire` en las fronteras.
+**Agrupar, no trocear.** El kernel se abstiene por debajo de 150 tokens y un
+`<p>` real ronda los 40. Enviar párrafo a párrafo habría producido abstención
+en el 100 % de los casos. Se agrupan hermanos contiguos, y el grupo se corta
+cuando cambia la naturaleza del contenido: mezclar un artículo con sus
+comentarios daría un veredicto sobre algo que no existe, ni lo uno ni lo otro
+sino su promedio.
 
-Del mismo tirón salió un segundo fallo: `portTransport` reconocía lo que debía
-propagar y se tragaba el resto, con lo que una carga circular acababa como
-petición que jamás vuelve — justo lo que ese `catch` pretendía evitar. Ahora
-reconoce lo benigno (puerto caído) y deja salir lo desconocido.
+**No se lee lo que el usuario está escribiendo.** `contenteditable`, campos de
+formulario y los editores conocidos por host se saltan enteros.
 
----
+**ADR-008 ya se respeta** en lo irrenunciable: una sola inserción, shadow root
+cerrado y `dispose()` que deja la página como estaba. Verificado en Chromium:
+0 atributos añadidos al artículo, shadow inaccesible desde la página.
 
-## Lo que sigue sin existir, y conviene no olvidarlo
+## Lo que sigue roto o ausente
 
-**No hay detector de texto.** El registro planea cero detectores para texto, así
-que el kernel se abstiene siempre con `NO_EVIDENCE`. Está fijado por test a
-propósito. Es la respuesta correcta mientras no haya un detector calibrado —un
-llr sin su conjunto de calibración no significa nada— pero significa que hoy la
-extensión no detecta texto generado. Las imágenes sí dan evidencia real por
-procedencia.
+- **`pnpm lint`**: el script es `eslint .` y no hay ni configuración ni
+  dependencia. Único punto de `pnpm check` que falla.
+- **No hay CI**: no existe `.github/workflows/`.
+- **No hay detector de texto** (S4 primera mitad). Necesita corpus para
+  calibrar; sin él solo se pueden inventar números.
 
-**`pnpm lint` sigue roto**, de antes: el script es `eslint .` y no hay ni
-configuración de ESLint ni la dependencia. Es el único punto de `pnpm check`
-que no pasa.
-
-**No hay CI.** No existe `.github/workflows/`.
-
----
-
-## Estado frente al plan del MVP
+## Estado frente al MVP
 
 | Hito | Estado |
 |---|---|
 | S1 · fundamentos y build | build instalable en 5 navegadores; faltan ESLint y CI |
 | S2 · contratos del kernel | completo |
-| S3 · procedencia | completo, y verificado en navegador real |
-| S4 · estilometría + content script | normalización lista; **faltan el detector y la extracción del DOM** |
+| S3 · procedencia | completo, verificado en navegador real |
+| S4 · estilometría + content script | **content script completo**; falta el detector estilométrico |
 | S5 · RuntimeHost, Workers, ORT | host y cableado completos; faltan Workers, ORT y ModelManager |
-| S6–S10 | sin empezar |
-
-## Siguiente paso recomendado
-
-El **content script** (S4, segunda mitad): extracción de bloques visibles,
-normalización —ya escrita— y petición por el canal `analyze`. Es lo más barato
-que convierte «carga pero no se ve nada» en «se ve funcionar», y no depende de
-tener detector de texto: sobre imágenes ya daría veredictos reales.
+| S7 · overlay | insignia mínima; falta el motor real |
+| S8 · popup | popup mínimo; faltan Opciones y Dashboard |

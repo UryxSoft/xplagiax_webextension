@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": [],
     "noEmit": true,
     // Se apunta al fuente de los paquetes del workspace, no a su `dist`: así el

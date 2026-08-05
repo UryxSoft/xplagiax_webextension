@@ -74,6 +74,14 @@ export default defineConfig({
     description: '__MSG_extDescription__',
     default_locale: 'es',
 
+    /**
+     * El icono es el gesto que concede `activeTab` (ADR-009, nivel 1). Sin él
+     * la extensión no tendría forma legítima de tocar una página, porque no se
+     * declara ningún `content_scripts`: eso pediría permiso de host en la
+     * instalación, que es justo lo que la arquitectura evita.
+     */
+    action: { default_title: '__MSG_extName__', default_popup: 'popup.html' },
+
     // ADR-009: cero host_permissions en la instalación.
     permissions: [
       'storage',
