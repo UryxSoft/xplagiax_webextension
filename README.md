@@ -8,7 +8,7 @@
 
 ```bash
 pnpm install
-pnpm test        # 70 tests
+pnpm test        # 118 tests
 pnpm typecheck
 ```
 
@@ -22,6 +22,9 @@ packages/
     scoring/bands.ts                 bandas, umbrales y abstención
     registry/ · pipeline/            registro y orquestación
   detectors/
+    provenance/                    Apache-2.0 · Tier 0 · sin modelos
+      containers · indicators        JPEG, PNG, WebP · C2PA, IPTC, EXIF
+      cbor · jumbf · cose · x509     verificación de firma, parseo propio
     extinction-validator/          GPL-3.0 · AISLADO. Etapa de validación heurística
 apps/
   extension/                       GPL-3.0 · un fuente, cinco artefactos
@@ -82,11 +85,16 @@ sobre app contenedora). Las diferencias reales entre plataformas están document
 
 Producto de **XplagiaX LTD** (Canadá) — [xplagiax.ca](https://xplagiax.ca).
 
-Licencia pendiente de decisión (ver
-[`docs/08-riesgos-legales.md`](./docs/08-riesgos-legales.md#5-licencias-de-terceros)).
-Dos restricciones de terceros la condicionan: los términos de Gemma para redistribuir pesos
-derivados, y la GPL-3.0 de Extinction, que impide integrar su código sin contagiar todo el
-producto ([ADR-010](./docs/adr/ADR-010-extinction-gpl.md)).
+La licencia no es única por decisión de diseño, y la frontera está verificada en CI:
+
+| Componente | Licencia | Motivo |
+|---|---|---|
+| `@xpx/kernel`, `@xpx/provenance` | Apache-2.0 | Base del SDK comercial. Cero dependencias |
+| `@xpx/extinction-validator` | GPL-3.0-or-later | Respeta la licencia del proyecto original |
+| Extensión de navegador | GPL-3.0-or-later | Empaqueta el validador |
+
+Pendiente: los términos de Gemma para redistribuir pesos derivados
+([`docs/08-riesgos-legales.md`](./docs/08-riesgos-legales.md#5-licencias-de-terceros)).
 
 ## Atribuciones
 
@@ -94,6 +102,8 @@ El diseño se apoya en el trabajo público de:
 
 - [`distil-labs/distil-ai-slop-detector`](https://github.com/distil-labs/distil-ai-slop-detector) (Apache-2.0) — motor Tier 2.
 - [`Noodulz/dejAIvu`](https://github.com/Noodulz/dejAIvu) — enfoque de saliencia y explicabilidad en imagen.
-- [`v81d/extinction`](https://github.com/v81d/extinction) (GPL-3.0) — inspiración del método
-  estilométrico de Tier 0. Su código no se incorpora; ver
-  [ADR-010](./docs/adr/ADR-010-extinction-gpl.md).
+- [`v81d/extinction`](https://github.com/v81d/extinction) (GPL-3.0) — método estilométrico de la
+  etapa de validación, en `packages/detectors/extinction-validator`. Ese paquete es GPL-3.0 y está
+  aislado: el kernel no lo importa y el SDK no lo incluye. La extensión sí, y por eso **la
+  extensión se distribuye bajo GPL-3.0**. Ver [ADR-010](./docs/adr/ADR-010-extinction-gpl.md) y
+  su [NOTICE](./packages/detectors/extinction-validator/NOTICE.md).

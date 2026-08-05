@@ -17,8 +17,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@xpx/extinction-validator": "workspace:*",
     "@xpx/kernel": "workspace:*",
-    "@xpx/extinction-validator": "workspace:*"
+    "@xpx/provenance": "workspace:*"
   },
   "devDependencies": {
     "wxt": "^0.21.3"

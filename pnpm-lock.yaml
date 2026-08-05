@@ -26,12 +26,21 @@ importers:
       '@xpx/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@xpx/provenance':
+        specifier: workspace:*
+        version: link:../../packages/detectors/provenance
     devDependencies:
       wxt:
         specifier: ^0.21.3
         version: 0.21.3(esbuild@0.21.5)(rollup@4.62.4)(typescript@5.9.3)(vite@5.4.21(@types/node@22.20.1))
 
   packages/detectors/extinction-validator:
+    dependencies:
+      '@xpx/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+
+  packages/detectors/provenance:
     dependencies:
       '@xpx/kernel':
         specifier: workspace:*
