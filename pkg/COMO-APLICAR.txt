@@ -1,0 +1,33 @@
+Cambios para UryxSoft/xplagiax_webextension
+Base: f823ed8 ("Add readme files for Safari, Chrome, Edge, Firefox, and Opera extensions")
+Rama destino: claude/ai-content-detection-platform-k3pa7d
+
+CONTENIDO
+  README.md                        reescrito: índice de los 20 entregables
+  .gitignore                       nuevo
+  docs/00..14-*.md                 investigación, arquitectura, riesgos, negocio
+  docs/adr/                        9 decisiones de arquitectura
+  0001-docs-arquitectura.patch     los mismos cambios como parche de git
+
+No se toca ningún fichero existente salvo README.md. Los directorios
+chrome_extension/, firefox_extension/, edge_extesion/, opera_extension/
+y Safari_extension/ quedan intactos.
+
+OPCION A - copiar los ficheros
+  cd /ruta/a/xplagiax_webextension
+  git checkout -b claude/ai-content-detection-platform-k3pa7d
+  tar xzf cambios_extension.tar.gz
+  cp -r pkg/README.md pkg/.gitignore pkg/docs .
+  git add -A && git commit
+  git push -u origin claude/ai-content-detection-platform-k3pa7d
+
+OPCION B - aplicar el parche (conserva el mensaje de commit)
+  cd /ruta/a/xplagiax_webextension
+  git checkout -b claude/ai-content-detection-platform-k3pa7d f823ed8
+  git am < pkg/0001-docs-arquitectura.patch
+  git push -u origin claude/ai-content-detection-platform-k3pa7d
+
+POR QUE NO SE SUBIO DESDE AQUI
+  git push          -> 403 (el proxy de la sesion bloquea escritura)
+  API de GitHub     -> 403 "Resource not accessible by integration"
+  La sesion tiene acceso de lectura al repo, no de escritura.

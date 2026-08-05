@@ -1,0 +1,4050 @@
+From 888376367d1f5a202f40bf6b5d1c411fa60d32e8 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 5 Aug 2026 13:56:22 +0000
+Subject: [PATCH] =?UTF-8?q?docs:=20investigaci=C3=B3n,=20arquitectura=20y?=
+ =?UTF-8?q?=20roadmap=20de=20la=20plataforma?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Entrega los 20 puntos de investigación y diseño previos a escribir código,
+según la condición del brief de validar la arquitectura primero.
+
+Investigación (docs/00-02): estado del arte en detección de texto e imagen,
+procedencia C2PA en 2026, y benchmark de la categoría.
+
+Arquitectura (docs/03-06): kernel puro sin dependencias de navegador como
+base reutilizable para extensión, API, SDK y on-prem; escalera de motores en
+tres niveles; diagramas de componentes y flujo de datos; modelo de permisos
+con escalada progresiva y sin host_permissions en la instalación.
+
+Riesgos (docs/07-09): técnicos, legales y de privacidad, con mitigaciones y
+riesgo residual declarado.
+
+Negocio (docs/10-14): monetización, MVP de 10 semanas, roadmaps V1/V2/
+Enterprise/Mobile/API/SDK con puertas de entrada medibles, estrategia de
+crecimiento y criterios de éxito con umbrales verificables en CI.
+
+Nueve ADR (docs/adr) registran las decisiones con sus alternativas
+descartadas y sus consecuencias negativas.
+
+Tres desviaciones respecto del brief, documentadas y justificadas:
+
+- Runtime único ONNX Runtime Web en lugar de ORT + TensorFlow.js. DejAIvu
+  mide ~35 ms menos por imagen con ORT; dos runtimes duplican peso y
+  superficie de fallo sin beneficio identificado.
+- Gemma-270M (~242 MB, 0,5-2 s por consulta) pasa a motor Tier 2 opt-in en
+  lugar de motor por defecto, que es incompatible con el objetivo de primer
+  veredicto por debajo de 1 s.
+- La reputación de dominios se construye con rastreador propio sobre páginas
+  públicas, no agregando la navegación de los usuarios, que sería vigilancia
+  incompatible con la promesa de privacidad.
+
+El posicionamiento se desplaza de emitir veredictos a emitir evidencia
+calibrada con abstención explícita, por la evidencia recogida sobre falsos
+positivos en hablantes no nativos y la retirada institucional de detectores.
+
+No se localiza un proyecto público identificable llamado "Extinction" en
+detección de texto; la ranura del segundo motor queda diseñada y se propone
+un detector zero-shot por perplejidad, pendiente de confirmar la referencia.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01YbiqN6TC3H4peH8zMCTuLA
+---
+ .gitignore                                 |  19 +
+ README.md                                  |  62 +++-
+ docs/00-resumen-ejecutivo.md               | 169 +++++++++
+ docs/01-estado-del-arte.md                 | 178 ++++++++++
+ docs/02-benchmark-competidores.md          | 138 ++++++++
+ docs/03-arquitectura.md                    | 381 +++++++++++++++++++++
+ docs/04-diagrama-componentes.md            | 216 ++++++++++++
+ docs/05-flujo-de-datos.md                  | 232 +++++++++++++
+ docs/06-modelo-de-permisos.md              | 174 ++++++++++
+ docs/07-riesgos-tecnicos.md                | 226 ++++++++++++
+ docs/08-riesgos-legales.md                 | 213 ++++++++++++
+ docs/09-riesgos-privacidad.md              | 182 ++++++++++
+ docs/10-monetizacion.md                    | 185 ++++++++++
+ docs/11-mvp.md                             | 160 +++++++++
+ docs/12-roadmap.md                         | 246 +++++++++++++
+ docs/13-estrategia-crecimiento.md          | 150 ++++++++
+ docs/14-criterios-de-exito.md              | 182 ++++++++++
+ docs/adr/ADR-001-kernel-puro.md            |  50 +++
+ docs/adr/ADR-002-framework-build.md        |  48 +++
+ docs/adr/ADR-003-modelos-como-datos.md     |  64 ++++
+ docs/adr/ADR-004-runtime-inferencia.md     |  66 ++++
+ docs/adr/ADR-005-motor-tier2.md            |  87 +++++
+ docs/adr/ADR-006-evidencia-llr.md          |  88 +++++
+ docs/adr/ADR-007-abstencion.md             |  82 +++++
+ docs/adr/ADR-008-overlay-no-destructivo.md |  80 +++++
+ docs/adr/ADR-009-permisos-progresivos.md   |  67 ++++
+ docs/adr/README.md                         |  33 ++
+ 27 files changed, 3776 insertions(+), 2 deletions(-)
+ create mode 100644 .gitignore
+ create mode 100644 docs/00-resumen-ejecutivo.md
+ create mode 100644 docs/01-estado-del-arte.md
+ create mode 100644 docs/02-benchmark-competidores.md
+ create mode 100644 docs/03-arquitectura.md
+ create mode 100644 docs/04-diagrama-componentes.md
+ create mode 100644 docs/05-flujo-de-datos.md
+ create mode 100644 docs/06-modelo-de-permisos.md
+ create mode 100644 docs/07-riesgos-tecnicos.md
+ create mode 100644 docs/08-riesgos-legales.md
+ create mode 100644 docs/09-riesgos-privacidad.md
+ create mode 100644 docs/10-monetizacion.md
+ create mode 100644 docs/11-mvp.md
+ create mode 100644 docs/12-roadmap.md
+ create mode 100644 docs/13-estrategia-crecimiento.md
+ create mode 100644 docs/14-criterios-de-exito.md
+ create mode 100644 docs/adr/ADR-001-kernel-puro.md
+ create mode 100644 docs/adr/ADR-002-framework-build.md
+ create mode 100644 docs/adr/ADR-003-modelos-como-datos.md
+ create mode 100644 docs/adr/ADR-004-runtime-inferencia.md
+ create mode 100644 docs/adr/ADR-005-motor-tier2.md
+ create mode 100644 docs/adr/ADR-006-evidencia-llr.md
+ create mode 100644 docs/adr/ADR-007-abstencion.md
+ create mode 100644 docs/adr/ADR-008-overlay-no-destructivo.md
+ create mode 100644 docs/adr/ADR-009-permisos-progresivos.md
+ create mode 100644 docs/adr/README.md
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..16f98b1
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,19 @@
++node_modules/
++dist/
++build/
++.output/
++.wxt/
++coverage/
++*.log
++.DS_Store
++.env
++.env.*
++!.env.example
++.turbo/
++playwright-report/
++test-results/
++*.crx
++*.xpi
++*.zip
++models/*.onnx
++models/*.gguf
+diff --git a/README.md b/README.md
+index 4f75cfc..3ff1a30 100644
+--- a/README.md
++++ b/README.md
+@@ -1,2 +1,60 @@
+-# xplagiax_webextension
+-Web extesion for chrome firefox edge
++# XplagiaX — Capa de Confianza de Contenido para la Web
++
++> Extensión multi-navegador y plataforma para evaluar **la procedencia y el origen** del contenido
++> (texto, imagen, vídeo) que un usuario encuentra en la web. Procesamiento local por defecto.
++> Ningún contenido del usuario sale del dispositivo sin consentimiento explícito.
++
++**Estado actual: fase de diseño. No hay código de aplicación todavía — por decisión explícita.**
++La arquitectura debe validarse antes de escribir la primera línea de producto.
++
++---
++
++## Índice de documentación
++
++Toda la investigación y el diseño viven en [`docs/`](./docs). Los 20 entregables solicitados
++están mapeados aquí para trazabilidad:
++
++| #  | Entregable                          | Documento |
++|----|-------------------------------------|-----------|
++| 0  | Resumen ejecutivo y tesis           | [`docs/00-resumen-ejecutivo.md`](./docs/00-resumen-ejecutivo.md) |
++| 1  | Estado del arte                     | [`docs/01-estado-del-arte.md`](./docs/01-estado-del-arte.md) |
++| 2  | Benchmark de competidores           | [`docs/02-benchmark-competidores.md`](./docs/02-benchmark-competidores.md) |
++| 3  | Arquitectura completa               | [`docs/03-arquitectura.md`](./docs/03-arquitectura.md) |
++| 4  | Diagrama de componentes             | [`docs/04-diagrama-componentes.md`](./docs/04-diagrama-componentes.md) |
++| 5  | Flujo de datos                      | [`docs/05-flujo-de-datos.md`](./docs/05-flujo-de-datos.md) |
++| 6  | Modelo de permisos                  | [`docs/06-modelo-de-permisos.md`](./docs/06-modelo-de-permisos.md) |
++| 7  | Riesgos técnicos                    | [`docs/07-riesgos-tecnicos.md`](./docs/07-riesgos-tecnicos.md) |
++| 8  | Riesgos legales                     | [`docs/08-riesgos-legales.md`](./docs/08-riesgos-legales.md) |
++| 9  | Riesgos de privacidad               | [`docs/09-riesgos-privacidad.md`](./docs/09-riesgos-privacidad.md) |
++| 10 | Estrategia de monetización          | [`docs/10-monetizacion.md`](./docs/10-monetizacion.md) |
++| 11 | MVP                                 | [`docs/11-mvp.md`](./docs/11-mvp.md) |
++| 12–17 | Roadmaps V1, V2, Enterprise, Mobile, API, SDK | [`docs/12-roadmap.md`](./docs/12-roadmap.md) |
++| 18–20 | Crecimiento, adquisición, liderazgo de mercado | [`docs/13-estrategia-crecimiento.md`](./docs/13-estrategia-crecimiento.md) |
++| —  | Criterios de éxito medibles         | [`docs/14-criterios-de-exito.md`](./docs/14-criterios-de-exito.md) |
++| —  | Decisiones de arquitectura (ADR)    | [`docs/adr/`](./docs/adr) |
++
++**Empieza por [`docs/00-resumen-ejecutivo.md`](./docs/00-resumen-ejecutivo.md).** Contiene la
++tesis del producto y las tres objeciones que cambian el diseño respecto al brief original.
++
++---
++
++## La tesis en una frase
++
++Vender veredictos de "esto lo escribió una IA" es un negocio comoditizado, científicamente frágil
++y legalmente expuesto. Vender **procedencia verificable + evidencia calibrada con abstención
++honesta** es una capa de infraestructura defendible. XplagiaX se construye sobre lo segundo.
++
++## Alcance de navegadores
++
++Chrome · Edge · Opera (Chromium MV3) · Firefox (MV3 con event pages) · Safari (Web Extension
++sobre app contenedora). Las diferencias reales entre plataformas están documentadas en
++[`docs/03-arquitectura.md`](./docs/03-arquitectura.md#8-matriz-de-compatibilidad-entre-navegadores)
++— no son cosméticas y condicionan el diseño del runtime.
++
++## Titularidad y licencia
++
++Producto de **XplagiaX LTD**.
++
++Licencia pendiente de decisión (ver
++[`docs/08-riesgos-legales.md`](./docs/08-riesgos-legales.md#5-licencias-de-terceros)).
++Los modelos de terceros evaluados imponen restricciones que afectan a la licencia del producto.
+diff --git a/docs/00-resumen-ejecutivo.md b/docs/00-resumen-ejecutivo.md
+new file mode 100644
+index 0000000..68d505a
+--- /dev/null
++++ b/docs/00-resumen-ejecutivo.md
+@@ -0,0 +1,169 @@
++# 00 · Resumen ejecutivo
++
++## 1. Qué se pidió y qué recomienda el consejo
++
++El brief pide la mejor plataforma del mundo para identificar contenido generado por IA, con
++potencial de valoración superior a mil millones de dólares. El consejo acepta el objetivo y
++entrega el diseño completo. Pero antes de la arquitectura hay tres objeciones que **cambian
++decisiones de producto**, no solo de implementación. Ignorarlas produciría un producto que
++funciona en demo y se rompe en el mercado.
++
++---
++
++## 2. Tres objeciones que cambian el diseño
++
++### Objeción 1 — La detección de texto IA no es lo bastante fiable para vender veredictos
++
++Esto no es una opinión sino el consenso de la evidencia disponible:
++
++- Un estudio de Stanford encontró **61,3 % de falsos positivos** en ensayos TOEFL escritos por
++  hablantes no nativos de inglés; el 97,8 % fue marcado por al menos uno de los siete detectores
++  evaluados. En textos de nativos, la tasa era cercana a cero.
++- El mayor estudio independiente conocido evaluó 14 herramientas y **ninguna superó el 80 % de
++  exactitud** en condiciones realistas.
++- Vanderbilt desactivó el detector de Turnitin en 2023. Le siguieron Yale, UCLA, UC Berkeley,
++  UC San Diego, Waterloo y Michigan State, entre otras. En 2026 varias universidades del Reino
++  Unido han retirado estas herramientas por precisión y sesgo.
++- Las cifras de exactitud que publican los proyectos abiertos (incluido el ~95 % de
++  `distil-ai-slop-detector`) son **exactitud en su conjunto de test**, no en la distribución
++  abierta de la web. La caída al mundo real es la norma, no la excepción.
++
++**Consecuencia de diseño.** El producto nunca emite una acusación binaria. Emite *evidencia
++calibrada con capacidad de abstención*: cuando la confianza no alcanza el umbral, el veredicto
++literal es "evidencia insuficiente", no "probablemente humano". La calibración (ECE) se mide y
++se publica junto a la exactitud. El motor se **niega a puntuar** en idiomas y dominios donde no
++está validado. Esto convierte el mayor riesgo del sector en el diferenciador del producto:
++somos el detector que sabe cuándo callarse.
++
++### Objeción 2 — La procedencia criptográfica está ganando, y llega antes que la detección perfecta
++
++Mientras la detección estadística se estanca, la infraestructura de procedencia se ha
++consolidado. C2PA superó los 6.000 miembros y afiliados en enero de 2026. Firman en captura
++Leica, Sony, Nikon, Canon y Samsung; Apple y Google Pixel lo han anunciado. X muestra
++credenciales desde marzo de 2026, TikTok etiqueta con C2PA, y Google está desplegando
++verificación en Gemini, Search y superficies de Chrome. El artículo 50 del Reglamento Europeo
++de IA entra en vigor en agosto de 2026 y exige marcado legible por máquina.
++
++C2PA no detecta deepfakes: registra historia verificable. Y su cadena se rompe cuando las
++plataformas eliminan metadatos al subir y recodificar. Es decir: **procedencia y detección son
++complementarias y ambas están incompletas.** Quien combine las dos con una fusión de evidencia
++honesta ocupa la posición defendible.
++
++**Consecuencia de diseño.** La procedencia es evidencia *dura* y domina la puntuación. La
++detección estadística es evidencia *blanda*. El orden importa y está codificado en el motor de
++fusión, no en la interfaz.
++
++### Objeción 3 — Un modelo de 270 MB no puede ser el motor por defecto
++
++`distil-ai-slop-detector` (Apache-2.0, Gemma 3 270M cuantizado Q4_K_M, ~242 MB, runtime wllama
++sobre WebAssembly, 0,5–2 s por consulta) es un proyecto excelente y es el motor profundo
++correcto. No es el motor por defecto:
++
++- 0,5–2 s por consulta hace imposible el objetivo de primer análisis por debajo de 1 segundo si
++  una página tiene 40 bloques de texto.
++- La política MV3 prohíbe código remoto, pero **los pesos son datos, no código**: se descargan
++  tras la instalación y se cachean. Esto es viable, pero significa que el primer uso exige una
++  descarga de 242 MB. Eso mata la activación en un producto de consumo si es obligatorio.
++- El límite de subida de la Chrome Web Store es 2 GB, así que empaquetarlo es técnicamente
++  posible y estratégicamente terrible.
++
++**Consecuencia de diseño.** Escalera de motores en tres niveles (Tier 0 / 1 / 2). El objetivo de
++"< 1 s" se cumple con Tier 0 + Tier 1. Tier 2 es bajo demanda y descarga opcional.
++
++---
++
++## 3. Reposicionamiento: de detector a capa de confianza
++
++| Brief original | Posicionamiento del consejo |
++|---|---|
++| Extensión que detecta contenido IA | Capa de confianza de contenido para la web |
++| Veredicto: "78 % IA" | Evidencia: procedencia verificada + señales estadísticas + abstención |
++| Compite con GPTZero / Originality | Compite por ser la capa que otros integran (API/SDK) |
++| Valor = exactitud del clasificador | Valor = calibración, cobertura multimodal, distribución y confianza |
++
++El clasificador es reemplazable y se comoditiza cada seis meses. Lo que no se comoditiza:
++la calibración auditada, la fusión multimodal, la distribución en cinco navegadores, el corpus
++de reputación de dominios construido con telemetría anónima agregada, y la posición de capa de
++infraestructura vía API y SDK.
++
++---
++
++## 4. Arquitectura en una imagen mental
++
++Un **kernel de detección** en TypeScript puro, sin dependencias del DOM ni de las APIs de
++extensión, que recibe contenido normalizado y devuelve objetos `Evidence`. Ese kernel corre
++igual dentro de un Web Worker de la extensión, dentro de Node para la API pública, o embebido en
++la app de un tercero vía SDK. Todo lo demás — content scripts, overlay, popup, service worker,
++almacenamiento — son *adaptadores* alrededor de ese núcleo.
++
++Esa única decisión es la que hace que los roadmaps de API, SDK, Enterprise y Mobile no requieran
++reescrituras. Detalle completo en [`03-arquitectura.md`](./03-arquitectura.md).
++
++---
++
++## 5. Escalera de motores
++
++| Nivel | Qué hace | Latencia objetivo | Coste | Activación |
++|---|---|---|---|---|
++| **Tier 0** | C2PA / IPTC / EXIF / SynthID donde sea legible, heurísticas estilométricas, señales de DOM | < 5 ms | 0 MB | Siempre |
++| **Tier 1** | Clasificador transformer destilado ONNX int8 (~30–60 MB) en Worker | < 100 ms por bloque | ~50 MB | Por defecto, descarga tras instalar |
++| **Tier 2** | Gemma 3 270M Q4 vía wllama, o cross-perplexity estilo Binoculars con dos LM pequeños | 0,5–2 s | ~242 MB | Opt-in explícito, bajo demanda |
++
++Binoculars (ICML 2024) es la referencia zero-shot: compara la perplejidad de un texto entre un
++modelo observador y uno ejecutor, es insensible a la longitud de entrada y generaliza bien entre
++dominios con modelos de ~1 B. Fast-DetectGPT usa curvatura de probabilidad condicional, necesita
++un solo modelo y es dos órdenes de magnitud más rápido que DetectGPT. Ambos son candidatos
++válidos para Tier 2; la elección se resuelve con el banco de pruebas descrito en
++[`14-criterios-de-exito.md`](./14-criterios-de-exito.md).
++
++---
++
++## 6. Qué construimos primero
++
++MVP de 10 semanas, Chrome y Edge, texto Tier 0 + Tier 1, procedencia de imagen vía C2PA, overlay
++no destructivo, popup, opciones e historial local. Fuera del MVP: vídeo, PDF, aprendizaje
++federado, marketplace, modo empresa. Detalle en [`11-mvp.md`](./11-mvp.md).
++
++---
++
++## 7. Monetización resumida
++
++Free (útil de verdad, no lisiado) → Pro 9 USD/mes (Tier 2, informes, motor de reglas, historial
++ilimitado) → Teams → Enterprise (política corporativa, SSO, auditoría, registro de modelos
++on-prem) → API y SDK con precio por uso. El bucle viral es el **Informe de Confianza
++compartible**: cada informe exportado es una landing pública con marca. Detalle en
++[`10-monetizacion.md`](./10-monetizacion.md).
++
++---
++
++## 8. La condición de honestidad
++
++Este producto solo tiene derecho a existir si es más honesto que la categoría en la que entra.
++Cada afirmación de la interfaz debe ser defendible ante un usuario acusado injustamente. La
++regla del consejo, no negociable:
++
++> Nunca mostrar un número sin su intervalo de confianza, nunca acusar sin evidencia dura, y
++> abstenerse siempre que el modelo esté fuera de su dominio de validación.
++
++Si esa regla reduce la conversión, se acepta la reducción.
++
++---
++
++## Fuentes
++
++- [Binoculars — Zero-Shot Detection of LLM-Generated Text (ICML 2024)](https://github.com/ahans30/Binoculars)
++- [Spotting LLMs with Binoculars — ICML Proceedings](https://dl.acm.org/doi/10.5555/3692070.3692768)
++- [distil-labs/distil-ai-slop-detector](https://github.com/distil-labs/distil-ai-slop-detector)
++- [distil-labs/distil-ai-slop-detector-gemma — Hugging Face](https://huggingface.co/distil-labs/distil-ai-slop-detector-gemma)
++- [DejAIvu — Identifying and Explaining AI Art on the Web in Real-Time with Saliency Maps (arXiv:2502.08821)](https://arxiv.org/abs/2502.08821)
++- [Noodulz/dejAIvu](https://github.com/Noodulz/dejAIvu)
++- [The Problem with False Positives: AI Detection Unfairly Accuses Scholars](https://www.tandfonline.com/doi/abs/10.1080/0361526X.2024.2433256)
++- [Contra generative AI detection in higher education assessments (arXiv:2312.05241)](https://arxiv.org/pdf/2312.05241)
++- [AI Detection Tools Are Biased Against International Students](https://gradpilot.com/news/international-students-ai-detection-bias)
++- [UK universities drop AI detection tools over accuracy fears](https://www.resultsense.com/news/2026-07-24-uk-universities-drop-ai-detection/)
++- [C2PA Adoption Tracker 2026 — Editors Weblog](https://editorsweblog.org/2026/04/12/c2pa-adoption-tracker-platforms-content-credentials-2026)
++- [C2PA Adoption in 2026: Hardware Platforms and Verification Reality](https://www.softwareseni.com/c2pa-adoption-in-2026-hardware-platforms-and-verification-reality/)
++- [Verifying Provenance of Digital Media: Why the C2PA Specifications Fall Short (arXiv:2604.24890)](https://arxiv.org/html/2604.24890v1)
++- [EU AI Act Article 50 — Transparency Obligations](https://artificialintelligenceact.eu/article/50/)
++- [Transparency obligations under Article 50 — European Commission](https://digital-strategy.ec.europa.eu/en/faqs/transparency-obligations-under-article-50-ai-act)
++- [Publish in the Chrome Web Store — límite de 2 GB por paquete](https://developer.chrome.com/docs/webstore/publish)
+diff --git a/docs/01-estado-del-arte.md b/docs/01-estado-del-arte.md
+new file mode 100644
+index 0000000..1333b24
+--- /dev/null
++++ b/docs/01-estado-del-arte.md
+@@ -0,0 +1,178 @@
++# 01 · Estado del arte
++
++Revisión de lo que funciona, lo que no funciona y lo que se puede ejecutar dentro de un
++navegador en 2026. Todo lo que sigue condiciona decisiones de arquitectura; lo que no las
++condiciona se ha omitido deliberadamente.
++
++---
++
++## 1. Detección de texto generado por IA
++
++### 1.1 Familias de métodos
++
++| Familia | Ejemplos | Cómo funciona | Ventaja | Límite |
++|---|---|---|---|---|
++| **Clasificador supervisado** | Turnitin, GPTZero, `Open-Detector` (BERT), Gemma-270M destilado | Fine-tuning binario humano/IA | Rápido, pequeño, desplegable | Se degrada fuera de su distribución; sesgo hacia texto "simple" |
++| **Zero-shot por perplejidad** | DetectGPT, Fast-DetectGPT, Binoculars | Compara señales estadísticas del propio LM | No requiere datos de entrenamiento, generaliza mejor entre dominios | Necesita uno o dos LM cargados; caro en navegador |
++| **Ensemble clásico** | NB + LogReg + LightGBM + CatBoost con soft-voting | Voto probabilístico sobre features | Muy barato, interpretable | Techo de exactitud bajo; frágil ante paráfrasis |
++| **Marca de agua** | SynthID (Google), esquemas de watermarking en decodificación | El generador inserta señal | Precisión altísima *si* está presente | Solo cubre a generadores que cooperan; se destruye al parafrasear |
++| **Procedencia criptográfica** | C2PA / Content Credentials | Firma la historia del archivo | Evidencia dura, verificable | Se rompe al recodificar; cobertura parcial |
++
++### 1.2 Los dos métodos zero-shot relevantes
++
++**Binoculars** (ICML 2024) calcula el cociente entre la perplejidad de un texto medida por un
++modelo *observador* y la cross-perplejidad respecto de un modelo *ejecutor*. Es zero-shot,
++agnóstico de dominio, **no es sensible a la longitud de la entrada** y funciona razonablemente
++con modelos de ~1 B parámetros. Su generalización entre dominios es su mayor virtud.
++
++**Fast-DetectGPT** sustituye el muestreo de perturbaciones de DetectGPT por *curvatura de
++probabilidad condicional*: mejora la velocidad en dos órdenes de magnitud y la exactitud en
++torno a un 75 % relativo, y necesita un solo modelo. Mejor precisión reportada en noticias.
++
++Para XplagiaX ambos son candidatos a **Tier 2**. Binoculars exige dos modelos en memoria
++simultáneamente, lo cual es caro en un navegador; Fast-DetectGPT es más viable en memoria pero
++menos robusto entre dominios. La decisión se toma por medición, no por preferencia:
++[ADR-005](./adr/ADR-005-motor-tier2.md).
++
++### 1.3 El problema que la categoría no ha resuelto
++
++La literatura crítica es consistente y no admite matices cómodos:
++
++- **Sesgo contra no nativos.** El estudio de Stanford midió 61,3 % de falsos positivos sobre
++  ensayos TOEFL frente a casi cero en escritores nativos. La causa es estructural: quien aprendió
++  el idioma como segunda lengua produce frases más cortas, léxico más común y sintaxis más
++  regular — exactamente el perfil estadístico del texto generado.
++- **Sin garantías estadísticas.** Los detectores comerciales entrenados no ofrecen control formal
++  de la tasa de falsos positivos. No hay un "p < 0,05" detrás del 78 % que muestran.
++- **Evasión trivial.** Existe literatura demostrando que se puede guiar a un LLM para evadir
++  detección, y la paráfrasis destruye tanto las señales estadísticas como las marcas de agua.
++- **Retirada institucional.** Universidades de primer nivel han desactivado estas herramientas.
++  Ese es el veredicto del mercado más motivado que existía para comprarlas.
++
++Trabajo reciente apunta al camino de salida: marcos **conformes** que dan garantía de cobertura
++sobre la tasa de error, y detección con **abstención**. XplagiaX adopta esa línea como núcleo del
++producto, no como añadido.
++
++### 1.4 Un dato incómodo y útil
++
++Existe evidencia de que personas que usan ChatGPT con frecuencia para escribir son detectores
++precisos y robustos de texto generado — en algunos escenarios mejores que los detectores
++automáticos. Implicación de producto: el humano en el bucle no es una concesión, es una fuente
++de señal. El sistema de *feedback* del usuario (marcar falso positivo / confirmar acierto) debe
++ser un ciudadano de primera clase de la interfaz desde el día uno, y alimenta la recalibración.
++
++---
++
++## 2. Detección de imagen generada por IA
++
++### 2.1 DejAIvu — la referencia de explicabilidad en navegador
++
++[DejAIvu](https://arxiv.org/abs/2502.08821) (arXiv:2502.08821) es la referencia correcta del
++brief. Arquitectura en dos etapas: clasificación con una ResNet modificada, y generación de
++**mapas de saliencia** basados en gradientes que se superponen sobre la imagen. Detalle de
++ingeniería directamente aplicable: los autores usan **ONNX Runtime Web en lugar de
++TensorFlow.js y obtienen ~35 ms menos de latencia por imagen**.
++
++Eso resuelve una pregunta abierta del brief. El brief pedía integrar `ClassifierAI` basado en
++TensorFlow.js *además* de ONNX. Mantener dos runtimes de inferencia en un producto cuyo
++presupuesto de rendimiento es estricto duplica el peso de WASM, duplica la superficie de fallo y
++cuesta latencia medida. **Recomendación: ONNX Runtime Web como runtime único.** Los modelos de
++TensorFlow.js que aporten valor se convierten a ONNX en el pipeline de build, no en tiempo de
++ejecución. Registrado en [ADR-004](./adr/ADR-004-runtime-inferencia.md).
++
++### 2.2 El techo de la detección de imagen
++
++La detección de imagen sintética generaliza aún peor que la de texto: un modelo entrenado con
++salidas de difusión de 2024 falla con generadores de 2026. Los benchmarks cross-paradigma de
++2026 lo confirman. Por eso, en imagen, **la procedencia pesa todavía más que en texto**.
++
++### 2.3 Procedencia: C2PA en 2026
++
++Situación real, no promesa:
++
++- Más de 6.000 miembros y afiliados en enero de 2026.
++- Firma en captura disponible en Leica (M11, Q3, SL3), Sony (Alpha 1 II, Alpha 9 III, Xperia 1 VI),
++  Nikon (Z8, Z9, Zf), Canon (EOS R1, R5 II), Samsung (Galaxy S26). Anunciados y no enviados:
++  Apple (iOS 20, otoño 2026), Pixel 11, Fujifilm GFX.
++- X muestra credenciales desde marzo de 2026 para Premium. TikTok etiqueta con C2PA. Google
++  despliega verificación en Gemini, Search y superficies de Chrome.
++- Limitación crítica: **la cadena se rompe cuando la plataforma elimina metadatos** al subir y
++  recodificar. Y análisis académico de 2026 concluye que la especificación es todavía incompleta
++  e inconsistente en puntos de seguridad, y debe tratarse como tecnología emergente.
++
++Lectura estratégica: C2PA presente es evidencia fuerte. C2PA **ausente** no es evidencia de nada
++— y esa asimetría debe estar codificada en el motor de fusión. Un producto que interprete
++"sin credenciales" como "sospechoso" será injusto con la mayor parte de la web.
++
++---
++
++## 3. Ejecución de modelos en el navegador
++
++| Runtime | Formato | Aceleración | Dónde encaja |
++|---|---|---|---|
++| **ONNX Runtime Web** | ONNX | WASM + SIMD + threads; WebGPU | Tier 1 (texto e imagen). Runtime principal |
++| **wllama** | GGUF | WASM (CPU) | Tier 2, path Gemma-270M |
++| **Transformers.js** | ONNX | Comparte ORT Web | Tokenización y pre/post-proceso |
++| **TensorFlow.js** | TF / TFLite | WebGL, WebGPU | Descartado como runtime de producción |
++
++Restricciones prácticas que condicionan el diseño:
++
++- **SharedArrayBuffer y threads** requieren aislamiento cross-origin. Dentro de páginas de
++  extensión es gestionable; dentro de un content script inyectado en una página de terceros, no
++  se puede asumir. Corolario: **la inferencia nunca ocurre en el content script.**
++- **WebGPU** no está disponible de forma uniforme en los cinco navegadores objetivo. Debe ser una
++  ruta acelerada opcional con degradación automática a WASM+SIMD.
++- **Presupuesto de memoria.** Un modelo Q4 de 242 MB en disco ocupa considerablemente más en
++  memoria durante la inferencia. En equipos modestos esto compite con la propia página.
++
++---
++
++## 4. Lo que la web ya expone y casi nadie usa
++
++Señales de coste cero que Tier 0 puede leer antes de cargar un solo modelo:
++
++- Manifiestos C2PA embebidos y en sidecar; IPTC `digitalSourceType`
++  (`trainedAlgorithmicMedia`, `compositeSynthetic`).
++- EXIF de generadores conocidos, campos `Software`, y en PNG los chunks `tEXt` con parámetros de
++  generación que muchas herramientas dejan intactos.
++- Etiquetado voluntario de plataforma en el propio DOM (marcas de "AI-generated" de las redes).
++- Señales estructurales: densidad de bloques de longitud casi idéntica, ausencia total de erratas
++  en textos largos, patrones de puntuación.
++
++Estas señales son baratas, no requieren ML, y en una fracción relevante de casos resuelven la
++pregunta con evidencia dura. Ningún competidor las prioriza. Es la parte del producto con mejor
++relación valor/coste y la primera que se construye.
++
++---
++
++## 5. Conclusiones que entran en la arquitectura
++
++1. Ningún clasificador único es suficiente → **fusión de evidencia multi-señal** obligatoria.
++2. La exactitud sin calibración es un número de marketing → **medir ECE y abstención**, no solo
++   AUC.
++3. La procedencia es evidencia dura y su ausencia no es evidencia → **asimetría explícita** en el
++   scoring.
++4. ONNX Runtime Web es el runtime; **un solo runtime**.
++5. La inferencia nunca ocurre en el content script.
++6. Tier 2 es opcional y bajo demanda; el producto debe ser útil sin él.
++7. El feedback humano es señal, no cortesía.
++
++---
++
++## Fuentes
++
++- [Binoculars: Zero-Shot Detection of LLM-Generated Text](https://github.com/ahans30/Binoculars) · [ICML Proceedings](https://dl.acm.org/doi/10.5555/3692070.3692768)
++- [Beyond Easy Wins: A Text Hardness-Aware Benchmark for LLM-generated Text Detection (arXiv:2507.15286)](https://arxiv.org/pdf/2507.15286)
++- [Luminol-AIDetect: Fast Zero-shot MGT Detection (arXiv:2604.25860)](https://arxiv.org/pdf/2604.25860)
++- [Alignment Imprint: Zero-Shot AI-Generated Text Detection (arXiv:2604.16923)](https://arxiv.org/html/2604.16923v1)
++- [People who frequently use ChatGPT are accurate detectors of AI-generated text (arXiv:2501.15654)](https://arxiv.org/pdf/2501.15654)
++- [Why AI-Generated Text Detection Fails: Evidence from Explainable AI (arXiv:2603.23146)](https://arxiv.org/pdf/2603.23146)
++- [Large Language Models can be Guided to Evade AI-Generated Text Detection (arXiv:2305.10847)](https://arxiv.org/pdf/2305.10847)
++- [Watermark in the Classroom: A Conformal Framework for Adaptive AI Usage Detection (arXiv:2507.23113)](https://arxiv.org/pdf/2507.23113)
++- [Benchmarking AI Text Detection: Assessing Detectors Against New Datasets](https://lill.is/pubs/Pudasaini2025.pdf)
++- [DejAIvu (arXiv:2502.08821)](https://arxiv.org/html/2502.08821v2) · [repositorio](https://github.com/Noodulz/dejAIvu)
++- [VendorBench-100: Cross-Paradigm Benchmark for Deepfake Image Detection (arXiv:2607.06254)](https://arxiv.org/pdf/2607.06254)
++- [C2PA Adoption Tracker 2026](https://editorsweblog.org/2026/04/12/c2pa-adoption-tracker-platforms-content-credentials-2026)
++- [Why the C2PA Specifications Fall Short (arXiv:2604.24890)](https://arxiv.org/html/2604.24890v1)
++- [What Is C2PA? The Standard, Its Metadata and Real Limits](https://truescreen.io/articles/c2pa-standard-history-limitations/)
++- [distil-labs/distil-ai-slop-detector](https://github.com/distil-labs/distil-ai-slop-detector)
+diff --git a/docs/02-benchmark-competidores.md b/docs/02-benchmark-competidores.md
+new file mode 100644
+index 0000000..c9534e4
+--- /dev/null
++++ b/docs/02-benchmark-competidores.md
+@@ -0,0 +1,138 @@
++# 02 · Benchmark de competidores
++
++## 1. Mapa del mercado
++
++La categoría se divide en cuatro segmentos que rara vez compiten entre sí. Entender esto importa
++porque define contra quién se gana y contra quién no vale la pena pelear.
++
++| Segmento | Jugadores | Modelo | Dónde vive | Debilidad estructural |
++|---|---|---|---|---|
++| **Detección académica** | Turnitin, Copyleaks, Originality.ai | B2B licencia institucional | LMS, servidor | Retirada institucional por falsos positivos; sin control de FPR |
++| **Detección de consumo** | GPTZero, Winston AI, ZeroGPT | Freemium web + API | Web app, servidor | Comoditizado, cero foso técnico, contenido sube a la nube |
++| **Deepfake / media forense** | Reality Defender, Hive, Sensity | Enterprise, alto ACV | API en la nube | Caro, no llega al usuario final, sin distribución en navegador |
++| **Procedencia** | C2PA / CAI, Truepic, verificadores | Estándar + herramientas | Cámara, plataforma | No detecta nada: solo registra. Cadena rota al recodificar |
++| **Extensiones open source** | `distil-ai-slop-detector`, DejAIvu, `ai-slop-detector` | Gratis, OSS | Navegador, local | Prueba de concepto: un modelo, una modalidad, sin calibración |
++
++**Nadie ocupa la intersección**: local + multimodal + multi-navegador + procedencia + calibración
++honesta + capa de API/SDK. Ese es el hueco.
++
++---
++
++## 2. Comparativa detallada
++
++| Criterio | GPTZero | Originality.ai | Turnitin | Copyleaks | Hive / Reality Defender | distil-ai-slop-detector | DejAIvu | **XplagiaX** |
++|---|---|---|---|---|---|---|---|---|
++| Procesamiento local | No | No | No | No | No | **Sí** | **Sí** | **Sí (por defecto)** |
++| Texto | Sí | Sí | Sí | Sí | Parcial | Sí | No | Sí |
++| Imagen | Parcial | Parcial | No | Parcial | Sí | No | **Sí** | Sí |
++| Vídeo | No | No | No | No | Sí | No | No | V2 |
++| Procedencia C2PA | No | No | No | No | Parcial | No | No | **Sí, prioritaria** |
++| Explicabilidad | Frases resaltadas | Mínima | Mínima | Mínima | Puntuación | Ninguna | **Saliency maps** | **XAI multimodal** |
++| Calibración publicada | No | No | No | No | No | No | No | **Sí (ECE + FPR)** |
++| Abstención explícita | No | No | No | No | No | No | No | **Sí** |
++| Multi-navegador | — | — | — | — | — | Chrome | Chrome | **5 navegadores** |
++| API pública | Sí | Sí | Limitada | Sí | Sí | No | No | V1.5 |
++| SDK embebible | No | No | No | No | Parcial | No | No | V2 |
++| Precio entrada | ~15 USD/mes | ~15 USD/mes | Institucional | ~10 USD/mes | Enterprise | Gratis | Gratis | Free → 9 USD/mes |
++
++---
++
++## 3. Lecturas competitivas que cambian decisiones
++
++### 3.1 Los detectores de nube tienen un problema de privacidad que no pueden resolver
++
++GPTZero, Originality y Copyleaks reciben el contenido en su servidor. Para un periodista
++verificando un documento filtrado, un abogado revisando un contrato, o un empleado analizando un
++correo interno, eso es descalificatorio. **No es una desventaja de marketing: es una barrera de
++compra.** Un producto local no puede ser igualado aquí sin que ellos reescriban su arquitectura y
++renuncien a su telemetría de contenido.
++
++Esta es la ventaja más duradera del producto y debe ser el primer mensaje, no el tercero.
++
++### 3.2 La retirada académica es una oportunidad mal leída
++
++El movimiento obvio sería concluir que el mercado educativo está muerto. Es la lectura
++equivocada. Las instituciones no retiraron los detectores porque no necesiten la señal: los
++retiraron porque **la señal venía sin garantías y producía acusaciones injustas**. Un producto
++que ofrece control formal de la tasa de falsos positivos, abstención en textos cortos y en
++idiomas no validados, y un informe de evidencia en lugar de un veredicto, entra por la puerta que
++los otros cerraron. El "Modo académico" del brief se rediseña alrededor de esta idea: la
++herramienta nunca acusa a un estudiante, produce evidencia para una conversación.
++
++### 3.3 Los proyectos OSS son referencias, no competidores
++
++`distil-ai-slop-detector` y DejAIvu son excelentes demostraciones de un componente. Ninguno
++tiene calibración, fusión, gestión de modelos, presupuesto de rendimiento, ni soporte
++multi-navegador. Se usan como **motores** dentro de XplagiaX, con atribución y respeto de
++licencia (Apache-2.0 en el caso de distil-labs). Competir con ellos sería un error de encuadre;
++integrarlos y superarlos en la capa de plataforma es el movimiento correcto.
++
++### 3.4 Nota sobre "Extinction"
++
++El brief menciona un proyecto llamado *Extinction* como segundo motor de texto. La búsqueda no
++localiza un proyecto público identificable con ese nombre en el ámbito de detección de texto IA.
++Puede tratarse de un nombre interno, un proyecto privado o una confusión de nomenclatura.
++
++**Esto no bloquea la arquitectura.** El requisito real detrás de la petición — un segundo motor
++independiente que actúe como segunda opinión y reduzca falsos positivos — está satisfecho por
++diseño: el `DetectorRegistry` acepta N detectores y la fusión de evidencia está construida para
++combinarlos. Los candidatos concretos para ese segundo motor, listados por preferencia:
++
++1. Un detector zero-shot por perplejidad (Fast-DetectGPT o Binoculars) — **máxima independencia
++   respecto del clasificador supervisado de Tier 1**, que es exactamente lo que reduce el error
++   correlacionado.
++2. Un ensemble clásico de features estilométricas (coste casi nulo, útil como Tier 0 reforzado).
++3. `Open-Detector` (BERT) para el vertical académico.
++
++Se pide al solicitante que confirme la referencia exacta de *Extinction* si existe; mientras
++tanto, la ranura está diseñada y ocupada por la opción 1.
++
++---
++
++## 4. Posicionamiento
++
++```
++                 alta explicabilidad y calibración
++                              ▲
++                              │
++              DejAIvu ●       │        ● XplagiaX
++                              │
++     nube ◄────────────────────┼────────────────────► local
++                              │
++     GPTZero ●   Turnitin ●   │   ● distil-ai-slop-detector
++     Originality ●  Hive ●    │
++                              │
++                              ▼
++                 veredicto opaco, sin garantías
++```
++
++El cuadrante superior derecho —local y honesto— está vacío y es el único desde el que se puede
++construir una capa de infraestructura, porque es el único en el que un tercero aceptaría
++integrar el motor en su propio producto.
++
++---
++
++## 5. Fosos defensivos, por durabilidad
++
++| Foso | Durabilidad | Por qué |
++|---|---|---|
++| Calibración auditada y abstención | **Alta** | Requiere corpus, metodología y disciplina de producto; no se copia con un fine-tuning |
++| Fusión multimodal + procedencia | **Alta** | Es arquitectura, no modelo |
++| Distribución en 5 navegadores | Media-alta | Coste real de ingeniería y de review en cinco tiendas |
++| Reputación de dominios agregada | **Alta y creciente** | Efecto de red de datos; mejora con cada usuario y no requiere contenido privado |
++| Kernel reutilizable → API/SDK | Alta | Coste de cambio para el integrador |
++| El clasificador concreto | **Nula** | Se comoditiza cada seis meses. Nunca debe ser el argumento de venta |
++
++---
++
++## Fuentes
++
++- [AI Detection Tools Used by Universities (2026): Who Uses What, Who Quit](https://detectiondrama.com/ai-detection-tools-used-by-universities/)
++- [Universities That Banned AI Detectors: 2026 Full List](https://detectiondrama.com/universities-that-banned-ai-detectors/)
++- [UK universities drop AI detection tools over accuracy fears](https://www.resultsense.com/news/2026-07-24-uk-universities-drop-ai-detection/)
++- [The Problems with AI Detectors — University of San Diego LRC](https://lawlibguides.sandiego.edu/c.php?g=1443311&p=10721367)
++- [GPTZero vs Turnitin: Comparing AI Detection in Education](https://www.eyesift.com/blog/gptzero-vs-turnitin/)
++- [C2PA vs Deepfake Detection: Key Differences](https://www.paladintech.ai/blogs/c2pa-vs-deepfake-detection-guide)
++- [Deepfakes vs. Provenance: Why C2PA Beats Detection](https://blog.pebblous.ai/blog/deepfake-detection-vs-provenance/en/)
++- [Ensemble-AI-Text-Detection](https://github.com/iamjr15/Ensemble-AI-Text-Detection) · [Open-Detector](https://github.com/Imalwayshere/Open-Detector)
++- [MOSAIC: Multiple Observers Spotting AI Content (arXiv:2409.07615)](https://arxiv.org/pdf/2409.07615)
+diff --git a/docs/03-arquitectura.md b/docs/03-arquitectura.md
+new file mode 100644
+index 0000000..8dba043
+--- /dev/null
++++ b/docs/03-arquitectura.md
+@@ -0,0 +1,381 @@
++# 03 · Arquitectura
++
++## 1. Principio rector
++
++> **El kernel de detección no sabe que existe un navegador.**
++
++`@xpx/kernel` es TypeScript puro: sin DOM, sin `chrome.*`, sin `browser.*`, sin `window`. Recibe
++contenido normalizado y devuelve evidencia. Todo lo demás son adaptadores.
++
++De esa única restricción se derivan gratis: la API pública (el kernel en Node), el SDK
++embebible (el kernel en un bundle), el modo Enterprise (el kernel en un runner on-prem), el
++soporte multi-navegador (cinco adaptadores, un núcleo) y la testabilidad real (el 80 % de la
++lógica se prueba sin levantar un navegador).
++
++Si una funcionalidad no puede implementarse sin romper esa restricción, la funcionalidad está
++mal diseñada.
++
++---
++
++## 2. Monorepo
++
++```
++xplagiax/
++├── packages/
++│   ├── kernel/              # Núcleo puro. Sin DOM, sin APIs de extensión.
++│   │   ├── contracts/       #   Tipos e interfaces. Sin implementación.
++│   │   ├── evidence/        #   Modelo de evidencia y fusión calibrada
++│   │   ├── registry/        #   DetectorRegistry, ciclo de vida de detectores
++│   │   ├── scoring/         #   Trust Score, umbrales, abstención
++│   │   └── policy/          #   Motor de reglas (umbrales, dominios, acciones)
++│   ├── detectors/
++│   │   ├── provenance/      # C2PA, IPTC, EXIF, chunks PNG  → Tier 0
++│   │   ├── stylometry/      # Heurísticas de texto sin ML   → Tier 0
++│   │   ├── text-onnx/       # Clasificador destilado ONNX   → Tier 1
++│   │   ├── image-onnx/      # Clasificador + saliencia      → Tier 1
++│   │   └── text-llm/        # Gemma-270M / perplejidad      → Tier 2
++│   ├── runtime/             # Abstracción de inferencia (ORT Web, wllama)
++│   ├── ipc/                 # RPC tipado con validación de esquema
++│   ├── storage/             # Repositorios: settings, historial, caché, modelos
++│   ├── ui/                  # Design system. Componentes sin lógica de negocio
++│   └── telemetry/           # Métricas anónimas opt-in + error reporting
++├── apps/
++│   ├── extension/           # Adaptadores por navegador + superficies de UI
++│   ├── api/                 # Servicio HTTP que envuelve el kernel (V1.5)
++│   └── sdk/                 # Paquete npm embebible (V2)
++├── models/                  # Manifiestos y metadatos. Los pesos NO se versionan
++├── benchmarks/              # Corpus, arneses de evaluación, informes de calibración
++└── docs/
++```
++
++Herramientas: **pnpm workspaces + Turborepo**, TypeScript en modo `strict` con
++`exactOptionalPropertyTypes` y `noUncheckedIndexedAccess`, ESLint con `eslint-plugin-boundaries`
++para **imponer las fronteras del monorepo en CI** (el kernel no puede importar nada de `apps/`;
++`detectors/` no puede importar `ui/`). Una regla de arquitectura que no está automatizada no
++existe.
++
++Build de la extensión con **WXT** — resuelve MV3 en Chromium, MV3 con event pages en Firefox y
++el empaquetado para Safari desde una sola base. Ver [ADR-002](./adr/ADR-002-framework-build.md).
++
++### 2.1 Relación con los directorios por navegador que ya existen en el repo
++
++El repositorio contiene ya `chrome_extension/`, `firefox_extension/`, `edge_extesion/`,
++`opera_extension/` y `Safari_extension/`. Esa estructura y la propuesta de monorepo no están en
++conflicto: **son capas distintas**.
++
++- `apps/extension/` es el **código fuente único**, con los adaptadores de plataforma aislados en
++  `apps/extension/platform/`.
++- Los directorios por navegador son **destinos de build**: WXT emite en cada uno el artefacto
++  listo para su tienda.
++
++```
++apps/extension/  ──(wxt build --browser chrome)──▶  chrome_extension/
++                 ──(wxt build --browser firefox)─▶  firefox_extension/
++                 ──(wxt build --browser edge)────▶  edge_extesion/
++                 ──(wxt build --browser opera)───▶  opera_extension/
++                 ──(wxt build --browser safari)──▶  Safari_extension/   + proyecto Xcode
++```
++
++Mantener código fuente duplicado por navegador sería el error contrario al que evita todo este
++diseño: cinco copias que divergen, cinco calibraciones distintas. Lo que se duplica es el
++**artefacto**, no la fuente.
++
++Nota menor: el directorio existente es `edge_extesion` (falta una `n`). Se propone corregirlo a
++`edge_extension` antes de que ninguna herramienta dependa de la ruta; después será un cambio con
++coste.
++
++---
++
++## 3. Modelo de evidencia
++
++Este es el corazón del producto. Ningún detector devuelve "72 % IA". Devuelve evidencia:
++
++```ts
++type Modality = 'text' | 'image' | 'video' | 'audio' | 'document';
++type EvidenceKind = 'provenance' | 'watermark' | 'statistical' | 'heuristic' | 'user';
++
++interface Evidence {
++  detectorId: string;
++  detectorVersion: string;
++  kind: EvidenceKind;
++  modality: Modality;
++
++  /** Log-likelihood ratio calibrado: log( P(e|generado) / P(e|humano) ).
++   *  Positivo apunta a generado, negativo a humano, 0 es no informativo. */
++  llr: number;
++
++  /** Fiabilidad de esta evidencia en el contexto actual, en [0,1].
++   *  Cae a 0 cuando el detector está fuera de su dominio de validación. */
++  reliability: number;
++
++  /** Identificador del conjunto de calibración con el que se produjo el llr. */
++  calibrationId: string;
++
++  /** Soporte para XAI: qué hizo que el detector opinara esto. */
++  rationale: Rationale[];
++
++  costMs: number;
++}
++```
++
++### 3.1 Por qué log-likelihood ratio y no probabilidad
++
++Combinar probabilidades por promedio es incorrecto y produce el error clásico del sector: dos
++detectores que comparten sesgo se refuerzan y generan un falso positivo con alta confianza. Los
++LLR se **suman** (fusión log-lineal ponderada por fiabilidad), lo que hace explícita la
++independencia asumida entre fuentes, y permite penalizar detectores correlacionados con una
++matriz de correlación estimada offline.
++
++Además, el LLR permite expresar lo que la probabilidad no puede: **evidencia nula**. Un detector
++que no sabe devuelve `llr = 0`, no `0.5`.
++
++### 3.2 Asimetría de la procedencia
++
++Codificada como regla dura en la fusión:
++
++- Manifiesto C2PA válido que declara `trainedAlgorithmicMedia` → evidencia dominante,
++  `llr` alto, `reliability = 1`. La cadena firmada gana sobre cualquier clasificador.
++- Manifiesto C2PA válido de captura de cámara con cadena íntegra → `llr` fuertemente negativo.
++- **Ausencia de manifiesto → `llr = 0`.** No es sospechoso. La mayoría de la web legítima no
++  tiene credenciales, y las plataformas destruyen metadatos al recodificar.
++
++### 3.3 Fusión y abstención
++
++```
++llr_total = Σ ( llr_i × reliability_i × w_i )     w_i de la matriz de decorrelación
++
++banda = clasificar(llr_total, intervalo_conforme)
++```
++
++Cuatro bandas, y solo cuatro. Nunca un porcentaje desnudo:
++
++| Banda | Significado en la UI |
++|---|---|
++| `PROVENANCE_CONFIRMED` | Credencial verificada. Certeza, no estimación |
++| `STRONG_SIGNAL` | Múltiples señales independientes concuerdan |
++| `WEAK_SIGNAL` | Indicios, insuficientes para afirmar |
++| `INSUFFICIENT_EVIDENCE` | **Abstención.** El estado por defecto |
++
++Condiciones de abstención obligatoria, no configurables por el usuario:
++
++- Texto por debajo del mínimo de tokens validado (indicativo: 150 tokens).
++- Idioma fuera del conjunto validado para el modelo cargado.
++- Intervalo conforme que cruza el umbral de decisión.
++- Desacuerdo alto entre detectores independientes con fiabilidad similar.
++
++El "modo estricto / relajado" del brief **mueve el umbral entre `WEAK` y `STRONG`, nunca desactiva
++la abstención.** Un usuario no puede configurar el producto para que sea injusto.
++
++---
++
++## 4. Interfaz de detector — la base del sistema de plugins
++
++```ts
++interface Detector {
++  readonly id: string;
++  readonly version: string;
++  readonly capabilities: {
++    modalities: Modality[];
++    tier: 0 | 1 | 2;
++    languages: string[] | 'any';
++    minInputTokens?: number;
++    requiresModel?: ModelRef;
++  };
++
++  /** Rechazo barato antes de gastar recursos. */
++  canHandle(input: NormalizedInput): boolean;
++
++  warmup(ctx: DetectorContext): Promise<void>;
++  score(input: NormalizedInput, ctx: DetectorContext): Promise<Evidence[]>;
++  dispose(): Promise<void>;
++}
++```
++
++Añadir un detector nuevo = publicar un paquete que implemente esta interfaz y registrarlo. Cero
++cambios en el núcleo. El marketplace del roadmap es esta interfaz más un manifiesto firmado y un
++sandbox de Worker. La arquitectura de plugins no es una fase futura: es la forma en que se
++escriben los detectores desde el primer día, incluidos los propios.
++
++---
++
++## 5. Runtime de inferencia
++
++`@xpx/runtime` presenta una fachada única sobre los backends y decide el mejor disponible:
++
++```
++InferenceRuntime
++├── OrtWebBackend        WebGPU → WASM+SIMD+threads → WASM simple
++└── WllamaBackend        GGUF, solo Tier 2, solo cuando el usuario opta
++```
++
++Selección en tiempo de ejecución mediante sondeo de capacidades (WebGPU presente,
++`crossOriginIsolated`, `SharedArrayBuffer`, núcleos disponibles, memoria del dispositivo), con
++degradación silenciosa. El resultado del sondeo se cachea y se expone en el modo desarrollador.
++
++**Regla absoluta: la inferencia jamás corre en el content script.** No se puede garantizar
++aislamiento cross-origin en una página de terceros, el hilo principal de esa página pertenece al
++usuario, y una fuga de memoria del runtime rompería el sitio del usuario, no el nuestro.
++
++Dónde corre entonces, por navegador:
++
++| Navegador | Host de inferencia |
++|---|---|
++| Chrome / Edge / Opera | **Offscreen Document** (`chrome.offscreen`), con Workers dedicados |
++| Firefox | Event page persistente del background + Workers |
++| Safari | Página de extensión oculta + Workers |
++
++Esa divergencia se esconde tras `RuntimeHost`, con una implementación por plataforma. Es la única
++parte del sistema donde se permite código específico de navegador, y está aislada en
++`apps/extension/platform/`.
++
++---
++
++## 6. Gestión de modelos
++
++Los pesos son **datos**, no código. Se descargan tras la instalación desde un CDN, nunca se
++empaquetan. El paquete de la extensión se mantiene por debajo de 10 MB.
++
++```ts
++interface ModelManifest {
++  id: string;                 // 'text-clf-multiling'
++  version: string;            // semver
++  format: 'onnx' | 'gguf';
++  files: { url: string; sha256: string; bytes: number }[];
++  signature: string;          // firma sobre el conjunto de hashes
++  calibrationId: string;      // ata el modelo a su curva de calibración
++  validatedLanguages: string[];
++  minRuntimeVersion: string;
++}
++```
++
++- Almacenamiento en **OPFS** (Origin Private File System) con Cache API como respaldo.
++- Verificación SHA-256 por fichero **y** verificación de firma del manifiesto antes de instanciar.
++  Un modelo que no verifica no se carga; no hay modo de omitir la comprobación.
++- Actualización diferencial por fichero: solo se descarga lo que cambió.
++- `calibrationId` viaja con el modelo. **Un modelo sin su calibración es inutilizable por
++  diseño** — impide el fallo silencioso de actualizar pesos y seguir usando umbrales viejos.
++- Compatibilidad hacia atrás: se conserva la versión anterior hasta que la nueva supera una
++  verificación de arranque. Rollback local automático.
++
++Esto habilita además el A/B testing de modelos y el registro privado de modelos en Enterprise sin
++cambios de arquitectura.
++
++---
++
++## 7. Motor de overlay
++
++Requisito del brief: no modificar permanentemente el DOM, todo reversible. Implementación:
++
++- **Un único nodo** insertado en `document.body`: `<xpx-root>` con **shadow root cerrado**. Sin
++  estilos globales, sin colisión de CSS, sin exposición a scripts de la página.
++- Los resaltados **no envuelven el texto original**. Se usa `Range` + `getClientRects()` para
++  calcular geometría, y se dibuja una capa absoluta dentro del shadow root. El DOM del host queda
++  intacto; el "subrayado" es una capa, no una etiqueta `<mark>`.
++  Alternativa preferente donde esté disponible: **CSS Custom Highlight API**, que resalta rangos
++  sin tocar el árbol en absoluto.
++- Reposicionamiento con `IntersectionObserver` + `ResizeObserver` + `scheduler.postTask`, nunca
++  con listeners de `scroll` sin throttling.
++- `dispose()` elimina el único nodo raíz y devuelve la página a su estado exacto.
++- Las superposiciones de imagen no reemplazan el `<img>`: se posicionan sobre él y se ocultan si
++  el elemento sale del viewport.
++
++Beneficio colateral: sitios que reaccionan a mutaciones del DOM (React, editores, SPAs con
++diffing) no se rompen, que es la causa número uno de reseñas de una estrella en extensiones de
++esta categoría.
++
++---
++
++## 8. Matriz de compatibilidad entre navegadores
++
++| Capacidad | Chrome / Edge / Opera | Firefox | Safari |
++|---|---|---|---|
++| Manifest | V3 | V3 (event pages, no service worker) | V3 (estilo Safari) |
++| Background | Service worker efímero | Event page | Service worker con límites propios |
++| `chrome.offscreen` | **Sí** | No | No |
++| `declarativeNetRequest` | Sí | Parcial | Parcial |
++| WebGPU | Sí | Progresivo | Progresivo |
++| OPFS | Sí | Sí | Sí, con cuotas más agresivas |
++| Permisos opcionales en runtime | Sí | Sí | Limitado |
++| Distribución | CWS / Edge Add-ons / Opera | AMO | App Store, requiere app contenedora macOS/iOS + Apple Developer Program |
++| Revisión | Automática + manual | Manual para código ofuscado | Revisión de App Store |
++
++Consecuencias asumidas:
++
++1. **Safari es el más caro** y no comparte pipeline de publicación. Va en V1.5, no en el MVP.
++   Requiere Xcode, app contenedora y cuota anual de desarrollador. Presupuestarlo como proyecto,
++   no como *build target*.
++2. Firefox no tiene offscreen documents; su host de inferencia es distinto. La abstracción
++   `RuntimeHost` existe por esto.
++3. Las cuotas de almacenamiento de Safari obligan a que Tier 2 sea opcional también por
++   viabilidad técnica, no solo por producto.
++4. Opera y Edge consumen el mismo artefacto que Chrome, pero **son tiendas y revisiones
++   separadas**: coste de proceso, no de ingeniería.
++
++---
++
++## 9. Presupuesto de rendimiento
++
++Presupuestos, no aspiraciones. Se verifican en CI con Playwright y fallan el build.
++
++| Métrica | Presupuesto |
++|---|---|
++| Content script, JS inicial | ≤ 15 KB gzip |
++| Bloqueo del hilo principal de la página, por tarea | ≤ 8 ms |
++| Primer veredicto visible (Tier 0 + Tier 1, p95) | ≤ 800 ms |
++| Tier 0 solo | ≤ 5 ms |
++| Retraso añadido en LCP de la página | ≤ 0 ms (todo el trabajo en idle) |
++| Caída de FPS durante scroll | 0 frames perdidos atribuibles |
++| RSS con Tier 1 cargado | ≤ 180 MB |
++| RSS con Tier 2 cargado | ≤ 700 MB, y con aviso al usuario |
++| Paquete de la extensión | ≤ 10 MB |
++
++Mecanismos: análisis incremental por bloque visible, `IntersectionObserver` como disparador,
++caché LRU con clave `sha256(texto normalizado) + versión de modelo + calibrationId`,
++cancelación por `AbortSignal` cuando el usuario navega, cola de trabajo con prioridad al viewport
++y presupuesto por página que se agota (mejor un análisis parcial que una página lenta).
++
++---
++
++## 10. Almacenamiento
++
++| Dato | Dónde | Por qué |
++|---|---|---|
++| Ajustes | `storage.sync` | Portable entre dispositivos, tamaño mínimo |
++| Historial y estadísticas | IndexedDB (Dexie) | Volumen, consultas, gráficos del dashboard |
++| Pesos de modelos | OPFS | Ficheros grandes, acceso por streaming |
++| Caché de resultados | IndexedDB con TTL + LRU | Evita recalcular |
++| Secretos (licencia Pro) | `storage.session` + `storage.local` cifrado | No debe filtrarse a content scripts |
++
++**El historial guarda hashes y metadatos, nunca el contenido analizado.** Un `sha256` del texto
++normalizado permite cachear y deduplicar sin conservar lo que el usuario leyó. El dashboard se
++construye sobre agregados. Excepción única: si el usuario guarda explícitamente un informe, se
++almacena localmente el extracto de evidencia que él eligió incluir.
++
++---
++
++## 11. IPC
++
++Todos los mensajes entre superficies pasan por `@xpx/ipc`: RPC tipado sobre
++`runtime.connect` con validación de esquema en ambos extremos (Zod o Valibot).
++
++- El content script es **no privilegiado**: no puede pedir inferencia arbitraria ni leer el
++  historial. Solo puede enviar contenido normalizado del documento en el que vive y recibir
++  veredictos para ese documento.
++- Todo mensaje entrante se valida antes de tocar lógica de negocio. Una página hostil puede
++  intentar hablar con nuestro content script.
++- Los canales llevan versión; una versión incompatible degrada en lugar de fallar.
++
++---
++
++## 12. Aplicación de SOLID
++
++| Principio | Dónde se hace visible |
++|---|---|
++| **S** | Un detector detecta. No renderiza, no persiste, no decide política |
++| **O** | Detectores nuevos se añaden registrándolos; el núcleo no cambia |
++| **L** | Todo `Detector` es sustituible; el registro solo conoce la interfaz |
++| **I** | `contracts/` expone interfaces mínimas por rol, no una fachada gigante |
++| **D** | El kernel depende de `InferenceRuntime` y `StorageRepo`, nunca de ORT Web ni de IndexedDB |
++
++Se automatiza con `eslint-plugin-boundaries` y con tests de arquitectura. Los principios que solo
++viven en un documento se erosionan en el tercer sprint.
+diff --git a/docs/04-diagrama-componentes.md b/docs/04-diagrama-componentes.md
+new file mode 100644
+index 0000000..593e157
+--- /dev/null
++++ b/docs/04-diagrama-componentes.md
+@@ -0,0 +1,216 @@
++# 04 · Diagrama de componentes
++
++## 1. Vista general
++
++```mermaid
++graph TB
++    subgraph page["Página del usuario (contexto no privilegiado)"]
++        CS["Content Script<br/><i>≤15 KB · solo extracción y eventos</i>"]
++        OV["Overlay Engine<br/><i>1 nodo · shadow root cerrado</i>"]
++        CS --> OV
++    end
++
++    subgraph ext["Contexto privilegiado de la extensión"]
++        BG["Background<br/>Service Worker / Event Page<br/><i>orquestación, ciclo de vida</i>"]
++        HOST["RuntimeHost<br/><i>Offscreen · Event Page · Página oculta</i>"]
++
++        subgraph workers["Web Workers"]
++            W1["Worker: texto"]
++            W2["Worker: imagen"]
++        end
++
++        subgraph ui["Superficies de UI"]
++            POP["Popup"]
++            OPT["Opciones"]
++            DASH["Dashboard"]
++            REP["Informes"]
++        end
++    end
++
++    subgraph kernel["@xpx/kernel — TypeScript puro, sin DOM"]
++        REG["DetectorRegistry"]
++        FUS["Evidence Fusion<br/><i>LLR · fiabilidad · decorrelación</i>"]
++        SCO["Scoring &amp; Abstención<br/><i>bandas · intervalos conformes</i>"]
++        POL["Policy Engine<br/><i>reglas de usuario y empresa</i>"]
++        REG --> FUS --> SCO --> POL
++    end
++
++    subgraph det["Detectores (plugins)"]
++        D0A["provenance<br/>C2PA · IPTC · EXIF · PNG"]
++        D0B["stylometry<br/>heurísticas sin ML"]
++        D1A["text-onnx<br/>clasificador destilado"]
++        D1B["image-onnx<br/>clasificación + saliencia"]
++        D2["text-llm<br/>Gemma-270M · perplejidad"]
++    end
++
++    subgraph infra["Infraestructura"]
++        RT["InferenceRuntime<br/><i>ORT Web · wllama</i>"]
++        MM["ModelManager<br/><i>OPFS · SHA-256 · firma</i>"]
++        ST["Storage<br/><i>sync · IndexedDB · OPFS</i>"]
++        TEL["Telemetry &amp; Errors<br/><i>opt-in · sin contenido</i>"]
++        FF["Feature Flags"]
++    end
++
++    CS -->|"IPC tipado y validado"| BG
++    BG --> HOST
++    HOST --> W1 & W2
++    W1 & W2 --> REG
++    REG --> D0A & D0B & D1A & D1B & D2
++    D1A & D1B & D2 --> RT
++    RT --> MM
++    MM --> ST
++    POL --> BG
++    BG -->|veredicto| CS
++    BG --> ui
++    ui --> ST
++    BG --> TEL
++    BG --> FF
++
++    classDef nucleo fill:#1a365d,stroke:#2c5282,color:#fff
++    classDef plugin fill:#22543d,stroke:#2f855a,color:#fff
++    classDef nopriv fill:#742a2a,stroke:#9b2c2c,color:#fff
++    class REG,FUS,SCO,POL nucleo
++    class D0A,D0B,D1A,D1B,D2 plugin
++    class CS,OV nopriv
++```
++
++Lectura del diagrama en una frase: **el contexto rojo no tiene privilegios y no ejecuta modelos;
++el contexto azul no sabe qué navegador lo hospeda; el verde es reemplazable sin tocar nada más.**
++
++---
++
++## 2. Responsabilidades y fronteras
++
++| Componente | Hace | **No hace** |
++|---|---|---|
++| **Content Script** | Extrae bloques de texto e imágenes visibles, normaliza, observa el viewport, pinta el overlay | Inferencia. Acceso al historial. Red. Decisiones de política |
++| **Overlay Engine** | Dibuja capas dentro de un shadow root cerrado, reposiciona, limpia | Modificar el DOM del host. Inyectar estilos globales |
++| **Background** | Orquesta, enruta IPC, gestiona ciclo de vida, aplica política | Inferencia pesada (delega en RuntimeHost) |
++| **RuntimeHost** | Aloja Workers y el runtime de inferencia con vida larga | Lógica de negocio. Conocer detectores concretos |
++| **DetectorRegistry** | Descubre, filtra por `canHandle`, planifica por tier y presupuesto | Interpretar resultados |
++| **Evidence Fusion** | Combina LLR ponderados por fiabilidad, decorrelaciona | Decidir qué mostrar |
++| **Scoring** | Bandas, intervalos conformes, abstención | Formatear texto de UI |
++| **Policy Engine** | Reglas de usuario y de empresa: umbrales, dominios, acciones | Persistir. Renderizar |
++| **ModelManager** | Descarga, verifica hash y firma, versiona, hace rollback | Ejecutar inferencia |
++| **Telemetry** | Métricas anónimas de rendimiento y calidad, opt-in | Ver contenido. Identificar usuarios o URLs |
++
++---
++
++## 3. Grafo de dependencias permitido
++
++```mermaid
++graph LR
++    APPS["apps/*"] --> UI["packages/ui"]
++    APPS --> IPC["packages/ipc"]
++    APPS --> STO["packages/storage"]
++    APPS --> KER["packages/kernel"]
++    DET["packages/detectors/*"] --> KER
++    DET --> RUN["packages/runtime"]
++    RUN --> KER
++    STO --> KER
++    UI --> KER
++    KER --> NADA["∅ sin dependencias internas"]
++
++    classDef raiz fill:#1a365d,stroke:#2c5282,color:#fff
++    class KER,NADA raiz
++```
++
++Reglas impuestas por `eslint-plugin-boundaries` y verificadas en CI:
++
++1. `kernel` no importa de ningún otro paquete interno. Cero excepciones.
++2. `detectors/*` no importa de `ui`, `storage` ni `apps`.
++3. `apps/extension` es el único lugar donde puede aparecer `chrome.*` o `browser.*`.
++4. `ui` no importa de `detectors` ni de `runtime`.
++
++Una violación rompe el build. Este es el mecanismo que impide que el monolito reaparezca por
++acumulación de atajos.
++
++---
++
++## 4. Máquina de estados del análisis de página
++
++```mermaid
++stateDiagram-v2
++    [*] --> Inactivo
++    Inactivo --> Evaluando: navegación / activación
++    Evaluando --> Excluido: dominio en lista negra o sin permiso
++    Evaluando --> Tier0: permitido
++    Excluido --> [*]
++
++    Tier0 --> Publicando: hay evidencia de procedencia concluyente
++    Tier0 --> Tier1: sin conclusión y Tier 1 disponible
++    Tier0 --> Abstenido: sin modelo y sin señales
++
++    Tier1 --> Publicando: banda resuelta
++    Tier1 --> Abstenido: intervalo cruza el umbral
++    Tier1 --> Tier2Ofrecido: usuario Pro y desacuerdo alto
++
++    Tier2Ofrecido --> Tier2: el usuario lo solicita
++    Tier2Ofrecido --> Abstenido: sin solicitud
++    Tier2 --> Publicando
++
++    Publicando --> Observando
++    Abstenido --> Observando
++    Observando --> Tier0: contenido nuevo en viewport
++    Observando --> Inactivo: se abandona la página
++
++    note right of Abstenido
++        Estado de primera clase.
++        Se muestra al usuario como
++        "evidencia insuficiente",
++        nunca como "parece humano".
++    end note
++```
++
++`Tier2Ofrecido` es deliberado: el motor caro **nunca se dispara solo**. Protege batería, memoria
++y la percepción de que la extensión "pesa".
++
++---
++
++## 5. Ciclo de vida de un detector
++
++```mermaid
++sequenceDiagram
++    participant R as DetectorRegistry
++    participant D as Detector
++    participant M as ModelManager
++    participant RT as InferenceRuntime
++
++    R->>D: canHandle(input)
++    D-->>R: true / false
++    alt no aplica
++        R-->>R: descartar sin coste
++    else aplica
++        R->>D: warmup(ctx)
++        D->>M: ensureModel(ModelRef)
++        M->>M: verificar SHA-256 + firma
++        alt verificación falla
++            M-->>D: error
++            D-->>R: reliability = 0
++        else verificación correcta
++            M-->>D: handle del modelo
++            D->>RT: createSession(handle)
++            RT-->>D: sesión
++        end
++        R->>D: score(input, ctx)
++        D-->>R: Evidence[]
++        Note over R: presupuesto agotado o navegación → AbortSignal
++        R->>D: dispose()
++    end
++```
++
++---
++
++## 6. Superficies de UI
++
++| Superficie | Propósito | Estado en MVP |
++|---|---|---|
++| **Overlay** | Evidencia en contexto: subrayado, tooltip, capa sobre imagen | Sí |
++| **Popup** | Trust Score de la página, switches de texto e imagen, acción rápida | Sí |
++| **Opciones** | Sensibilidad, idioma, atajos, tema, listas, modelo, actualizaciones | Sí |
++| **Dashboard** | Historial, estadísticas, gráficos, dominios, exportación | Parcial |
++| **Informes** | Exportable PDF/JSON con evidencias, para periodismo y peritaje | V1 |
++| **Modo desarrollador** | Tiempos de inferencia, LLR por detector, modelo, calibración | Sí, oculto |
++
++El modo desarrollador entra en el MVP a propósito: es el instrumento con el que se depura la
++calibración, y su coste es bajo porque los datos ya existen en el objeto `Evidence`.
+diff --git a/docs/05-flujo-de-datos.md b/docs/05-flujo-de-datos.md
+new file mode 100644
+index 0000000..d669682
+--- /dev/null
++++ b/docs/05-flujo-de-datos.md
+@@ -0,0 +1,232 @@
++# 05 · Flujo de datos
++
++## 1. Regla de frontera
++
++Solo tres tipos de datos cruzan la frontera del dispositivo, y los tres son opcionales:
++
++| Sale del dispositivo | Cuándo | Contiene contenido del usuario |
++|---|---|---|
++| Descarga de modelos | Al activar un tier | No. Tráfico unidireccional hacia el CDN |
++| Telemetría | Solo con opt-in explícito | **No.** Métricas agregadas, sin URL ni texto |
++| Informe compartido | Solo si el usuario pulsa "compartir" | Sí, lo que él seleccionó, y lo sabe |
++
++Todo lo demás permanece local. Esto no es una preferencia: es la restricción de diseño de la que
++depende la propuesta de valor entera.
++
++---
++
++## 2. Flujo principal: análisis de una página
++
++```mermaid
++sequenceDiagram
++    autonumber
++    actor U as Usuario
++    participant P as Página
++    participant CS as Content Script
++    participant BG as Background
++    participant H as RuntimeHost
++    participant W as Worker
++    participant K as Kernel
++    participant S as Storage
++
++    U->>P: navega
++    P->>CS: DOM listo
++    CS->>CS: ¿dominio permitido? (caché local de política)
++    CS->>CS: extraer bloques visibles + normalizar
++    Note over CS: normalizar = limpiar boilerplate,<br/>segmentar, calcular sha256 por bloque
++
++    CS->>BG: analyze({ blocks: [{hash, text, lang}], images: [{hash, src}] })
++    BG->>S: lookup(hash) en caché
++    alt acierto de caché
++        S-->>BG: Evidence[] cacheada
++    else fallo de caché
++        BG->>H: schedule(job, presupuesto, AbortSignal)
++        H->>W: postMessage(job)
++        W->>K: registry.run(input)
++        K->>K: Tier 0 (procedencia + estilometría)
++        alt procedencia concluyente
++            K-->>W: Evidence[] · PROVENANCE_CONFIRMED
++        else no concluyente
++            K->>K: Tier 1 (ONNX)
++            K->>K: fusión LLR + abstención
++            K-->>W: Evidence[] + banda
++        end
++        W-->>H: resultado
++        H-->>BG: resultado
++        BG->>S: guardar (hash, banda, agregados) — sin texto
++    end
++
++    BG-->>CS: veredicto por bloque
++    CS->>P: overlay dentro del shadow root
++    U->>CS: hover en un bloque
++    CS->>BG: explain(hash)
++    BG-->>CS: Rationale[]
++    CS->>U: tooltip con banda, intervalo, modelo y "¿Por qué?"
++```
++
++Puntos donde se cancela el trabajo: el usuario navega, el bloque sale del viewport antes de
++empezar, el presupuesto de página se agota, o el sistema detecta contención de CPU. Todos se
++propagan con un único `AbortSignal` por página.
++
++---
++
++## 3. Normalización antes de cruzar cualquier frontera
++
++El content script no envía el DOM. Envía una estructura mínima:
++
++```ts
++interface NormalizedInput {
++  hash: string;              // sha256 del texto normalizado
++  modality: Modality;
++  text?: string;             // sin boilerplate, sin navegación, sin anuncios
++  imageRef?: { hash: string; bitmap: ImageBitmap };
++  lang: string;              // detectado localmente
++  tokenCount: number;
++  domHints: {                // señales estructurales baratas
++    isArticle: boolean;
++    isUserGenerated: boolean;
++    platformLabel?: string;  // etiqueta de IA declarada por la plataforma
++  };
++}
++```
++
++`hash` es la clave de caché y **la única cosa que se persiste** junto al resultado. El campo
++`text` vive en memoria durante la petición y se descarta.
++
++---
++
++## 4. Flujo de imagen
++
++```mermaid
++flowchart LR
++    A["&lt;img&gt; en viewport"] --> B{"¿mismo origen o CORS?"}
++    B -->|no| C["Solo metadatos accesibles<br/>reliability reducida"]
++    B -->|sí| D["OffscreenCanvas<br/>decodificar sin bloquear"]
++    D --> E["Extraer C2PA / IPTC / EXIF / chunks PNG"]
++    E --> F{"¿manifiesto válido?"}
++    F -->|"declara IA"| G["PROVENANCE_CONFIRMED<br/>fin"]
++    F -->|"cadena de cámara"| H["LLR negativo fuerte<br/>fin"]
++    F -->|"ausente"| I["llr = 0 · NO es sospecha"]
++    I --> J["Tier 1: clasificador ONNX"]
++    J --> K["Saliencia por gradientes"]
++    K --> L["Fusión + banda"]
++    C --> L
++    G --> M["Overlay"]
++    H --> M
++    L --> M
++```
++
++Dos detalles de ingeniería que evitan problemas reales:
++
++- La decodificación va a **OffscreenCanvas** dentro del Worker. Decodificar en el hilo principal
++  de la página es la forma más rápida de arruinar el scroll en una galería.
++- Imágenes cross-origin sin CORS no se pueden leer píxel a píxel. En ese caso el sistema **lo
++  dice** ("análisis limitado a metadatos") en lugar de fingir un resultado con menos información.
++
++---
++
++## 5. Flujo de descarga y verificación de modelos
++
++```mermaid
++sequenceDiagram
++    participant U as Usuario
++    participant OPT as Opciones
++    participant MM as ModelManager
++    participant CDN as CDN de modelos
++    participant OPFS as OPFS
++
++    U->>OPT: activar análisis de texto
++    OPT->>MM: ensure('text-clf-multiling')
++    MM->>OPFS: ¿instalado y verificado?
++    alt ya presente
++        OPFS-->>MM: handle
++    else ausente
++        MM->>U: "Se descargarán 48 MB. ¿Continuar?"
++        U-->>MM: sí
++        MM->>CDN: GET manifest.json
++        CDN-->>MM: manifiesto firmado
++        MM->>MM: verificar firma del manifiesto
++        MM->>CDN: GET ficheros (reanudable, por trozos)
++        loop por fichero
++            MM->>MM: SHA-256
++            alt hash no coincide
++                MM->>MM: abortar y purgar
++                MM->>U: error, sin instalar
++            end
++        end
++        MM->>OPFS: escribir + registrar calibrationId
++    end
++    MM-->>OPT: listo
++```
++
++La descarga se anuncia con su tamaño **antes** de empezar. Un producto que consume 48 MB sin
++avisar pierde la confianza que dice vender.
++
++---
++
++## 6. Telemetría — qué se envía exactamente
++
++Opt-in, desactivada por defecto, revocable, y con vista previa del payload en Opciones.
++
++```jsonc
++{
++  "schema": "xpx.telemetry.v1",
++  "installBucket": "2026-w32",     // cohorte semanal, no ID de instalación
++  "appVersion": "1.2.0",
++  "platform": "chromium",
++  "event": "analysis_completed",
++  "tier": 1,
++  "modelId": "text-clf-multiling",
++  "modelVersion": "0.4.1",
++  "calibrationId": "cal-2026-07",
++  "latencyMsP50": 82,
++  "latencyMsP95": 240,
++  "band": "WEAK_SIGNAL",
++  "abstained": false,
++  "langBucket": "es",
++  "deviceTier": "mid"
++}
++```
++
++Lo que **nunca** aparece en el payload, verificado por test automatizado en CI que falla si un
++campo prohibido se cuela:
++
++- URL, dominio o cualquier derivado (ni siquiera hasheado — un dominio hasheado es reversible por
++  fuerza bruta sobre una lista de dominios conocidos).
++- Texto, fragmentos de texto, hashes de contenido.
++- Imágenes o sus hashes.
++- Identificador estable de usuario o de instalación.
++- Dirección IP conservada: el endpoint la descarta antes de persistir.
++
++El "sistema de reputación de dominios" del brief **no puede construirse con esta telemetría**, y
++esa es la decisión correcta. Se construye con un rastreador propio sobre páginas públicas, no con
++los hábitos de navegación de los usuarios. Detalle en
++[`09-riesgos-privacidad.md`](./09-riesgos-privacidad.md#5-reputación-de-dominios-sin-vigilar-a-nadie).
++
++---
++
++## 7. Retención local
++
++| Dato | Retención por defecto | Configurable |
++|---|---|---|
++| Caché de resultados | 7 días o 5.000 entradas (LRU) | Sí |
++| Historial del dashboard | 90 días, solo agregados | Sí, incluido "no guardar nada" |
++| Informes guardados | Hasta borrado manual | — |
++| Modelos | Hasta desinstalación o purga manual | Sí |
++| Logs de error | 30 días, locales, sin enviar salvo opt-in | Sí |
++
++"Borrar todos mis datos" en Opciones vacía IndexedDB, OPFS y `storage`, y es una sola acción sin
++diálogos de retención. También se ofrece un modo incógnito propio: analizar sin escribir nada.
++
++---
++
++## 8. Modo offline
++
++Sin conexión, con modelos ya instalados, sigue funcionando: Tier 0 completo, Tier 1 completo,
++Tier 2 si estaba descargado, overlay, popup, dashboard, historial, informes y exportación. Se
++degradan únicamente: la comprobación de actualizaciones y el envío de telemetría, que se encola
++y caduca a los 7 días si nunca hay red.
++
++Esto es consecuencia directa de la arquitectura local; no requiere trabajo específico más allá de
++no introducir dependencias de red en rutas críticas. Se verifica con un test E2E que corre con la
++red bloqueada.
+diff --git a/docs/06-modelo-de-permisos.md b/docs/06-modelo-de-permisos.md
+new file mode 100644
+index 0000000..21dea07
+--- /dev/null
++++ b/docs/06-modelo-de-permisos.md
+@@ -0,0 +1,174 @@
++# 06 · Modelo de permisos
++
++## 1. La decisión que define el producto
++
++**No se pide `<all_urls>` en la instalación.**
++
++Es tentador pedirlo: simplifica el código y permite analizar todo automáticamente desde el primer
++segundo. También produce el aviso de instalación más agresivo que existe —*"Leer y cambiar todos
++tus datos en todos los sitios web"*— en un producto cuyo argumento central es la privacidad. La
++contradicción sería fatal, y además dispara revisión manual prolongada en las cinco tiendas.
++
++Modelo adoptado: **escalada progresiva de permisos**. El usuario concede acceso al ámbito que
++quiere, cuando lo quiere, y lo ve.
++
++---
++
++## 2. Permisos en la instalación
++
++```jsonc
++{
++  "permissions": [
++    "storage",        // ajustes, historial, caché
++    "activeTab",      // acceso a la pestaña actual solo tras acción del usuario
++    "scripting",      // inyección programática, solo donde hay permiso
++    "offscreen"       // solo Chromium; host de inferencia
++  ],
++  "optional_permissions": [
++    "tabs",           // solo si el usuario activa el análisis automático
++    "unlimitedStorage" // solo si instala Tier 2
++  ],
++  "host_permissions": [],
++  "optional_host_permissions": [
++    "http://*/*",
++    "https://*/*"
++  ]
++}
++```
++
++Ningún `host_permissions` en la instalación. El aviso que ve el usuario al instalar es mínimo, y
++eso es una ventaja de conversión medible además de una postura ética.
++
++---
++
++## 3. Los tres niveles de acceso
++
++| Nivel | Qué concede el usuario | Cómo lo concede | Qué obtiene |
++|---|---|---|---|
++| **1 · Bajo demanda** | Nada persistente | Pulsa el icono de la extensión | Análisis de la pestaña actual, esta vez. `activeTab` caduca al navegar |
++| **2 · Por sitio** | Permiso de host para un origen | "Analizar siempre este sitio" en el popup | Análisis automático en ese dominio, para siempre o hasta revocar |
++| **3 · Global** | `http://*/*` + `https://*/*` + `tabs` | Interruptor explícito en Opciones, con explicación de qué implica | Análisis automático en toda la web |
++
++El nivel 1 es el estado inicial y **es un producto completo por sí mismo**. El brief pide análisis
++automático de las páginas visitadas; eso es el nivel 2 o 3, y se alcanza cuando el usuario ya
++confía en la herramienta, no antes de haberla probado.
++
++La escalada se solicita con `permissions.request()` desde un gesto del usuario, nunca de forma
++programática al arrancar.
++
++---
++
++## 4. Justificación de cada permiso
++
++Este cuadro es literalmente el texto que va en las fichas de las tiendas. Las cinco lo exigen y
++la falta de justificación específica es una causa habitual de rechazo.
++
++| Permiso | Justificación |
++|---|---|
++| `storage` | Guardar ajustes, historial local y caché de resultados. Ningún dato sale del dispositivo |
++| `activeTab` | Analizar la página actual cuando el usuario pulsa el icono. Sin acceso persistente |
++| `scripting` | Inyectar el analizador solo en páginas con permiso concedido |
++| `offscreen` | Ejecutar los modelos de IA en un contexto aislado, fuera de la página del usuario |
++| `tabs` (opcional) | Detectar navegación para analizar automáticamente, solo si el usuario lo activa |
++| `unlimitedStorage` (opcional) | Almacenar el modelo profundo (~242 MB) que el usuario elige instalar |
++| Hosts (opcional) | Analizar automáticamente los sitios que el usuario autorice, uno a uno o globalmente |
++
++---
++
++## 5. Flujo de escalada
++
++```mermaid
++flowchart TD
++    A["Instalación<br/>permisos mínimos"] --> B["El usuario pulsa el icono"]
++    B --> C["activeTab: análisis de esta pestaña"]
++    C --> D{"¿Resultado útil?"}
++    D -->|"sí, repetidamente"| E["Popup ofrece:<br/>'Analizar siempre nytimes.com'"]
++    E --> F["permissions.request(origin)"]
++    F --> G["Análisis automático en ese sitio"]
++    G --> H{"¿3+ sitios autorizados?"}
++    H -->|sí| I["Opciones sugiere modo global<br/>con explicación completa"]
++    I --> J["permissions.request(all)"]
++    J --> K["Análisis automático global"]
++
++    K -.->|"revocable en 1 clic"| A
++    G -.->|"revocable por sitio"| C
++
++    classDef inicio fill:#22543d,stroke:#2f855a,color:#fff
++    class A,C inicio
++```
++
++La sugerencia del paso `H` aparece **una sola vez**. Si el usuario la rechaza, no vuelve a
++aparecer. Un producto de privacidad que insiste en pedir más acceso está mintiendo sobre sus
++prioridades.
++
++---
++
++## 6. Contención de privilegios
++
++Superficies ordenadas por privilegio, de menos a más:
++
++```
++Content Script          → sin red, sin storage, sin historial. Solo su documento
++      ↓ IPC validado
++Background              → orquesta. No ejecuta modelos
++      ↓
++RuntimeHost / Workers   → ejecutan modelos. Sin acceso al DOM del usuario
++      ↓
++Storage                 → único punto de persistencia
++```
++
++Reglas duras:
++
++- El content script **no puede** solicitar inferencia sobre contenido arbitrario ni leer
++  resultados de otras pestañas. Un mensaje que lo intente se rechaza en la validación de esquema.
++- El content script **no tiene acceso a la red**. Toda la red pasa por el background, que solo
++  habla con el CDN de modelos y, con opt-in, con el endpoint de telemetría.
++- Los Workers de inferencia **no reciben la URL** de la página. Reciben contenido normalizado.
++  No pueden correlacionar resultados con sitios ni aunque estuvieran comprometidos.
++- CSP estricta en todas las páginas de extensión: `script-src 'self' 'wasm-unsafe-eval'`, sin
++  `unsafe-inline`, sin `unsafe-eval`, sin orígenes remotos.
++- `web_accessible_resources` reducido al mínimo indispensable y limitado por `matches`, nunca
++  `<all_urls>`. Exponer recursos globalmente permite el *fingerprinting* de la extensión por
++  parte de cualquier sitio.
++
++---
++
++## 7. Exclusiones no negociables
++
++Dominios donde la extensión **no se ejecuta jamás**, ni siquiera con permiso global concedido.
++Lista embebida en el código, no configurable:
++
++- Banca y pasarelas de pago conocidas.
++- Portales sanitarios y de historia clínica.
++- Autoridades fiscales y de identidad.
++- `chrome://`, `about:`, `edge://`, páginas de la Web Store y de AMO.
++- Cualquier página con un formulario de contraseña con el foco activo: el análisis se pausa.
++
++El usuario puede añadir exclusiones. **No puede quitar las de esta lista.** El coste de un
++error de análisis en la banca online es asimétricamente peor que el valor de analizarla.
++
++---
++
++## 8. Diferencias por navegador
++
++| Navegador | Particularidad | Cómo se resuelve |
++|---|---|---|
++| Chrome / Edge / Opera | `permissions.request()` desde gesto de usuario | Camino de referencia |
++| Firefox | Soporta permisos opcionales; sin `offscreen` | Misma UX, distinto RuntimeHost |
++| Safari | Modelo de permisos propio, más restrictivo y menos granular; requiere app contenedora | UX simplificada: por sitio o global, sin estados intermedios. Documentado como limitación conocida |
++
++Safari es el que peor encaja en el modelo de escalada progresiva. Se acepta la degradación en
++lugar de rebajar el modelo en las otras cuatro plataformas.
++
++---
++
++## 9. Modo Enterprise
++
++En despliegue corporativo los permisos se preconfiguran por política de administrador
++(`managed_schema` / Group Policy / MDM). El administrador puede fijar el ámbito, la lista de
++exclusiones y desactivar la telemetría de forma irrevocable para toda la organización.
++
++Contrapartida ética, escrita en la documentación del producto empresarial: **el administrador no
++puede activar ninguna función que envíe contenido de los empleados a ningún sitio.** El modo
++empresa amplía el control sobre la configuración, no sobre la vigilancia. Si un cliente pide esa
++capacidad, se pierde el cliente.
+diff --git a/docs/07-riesgos-tecnicos.md b/docs/07-riesgos-tecnicos.md
+new file mode 100644
+index 0000000..fbda8bd
+--- /dev/null
++++ b/docs/07-riesgos-tecnicos.md
+@@ -0,0 +1,226 @@
++# 07 · Riesgos técnicos
++
++Escala: **P** probabilidad, **I** impacto, ambos 1–5. Ordenado por P×I.
++
++---
++
++## R-01 · La exactitud del detector no sobrevive al mundo real · P5 I5
++
++**Riesgo.** El modelo alcanza ~95 % en su conjunto de test y cae muy por debajo en la
++distribución abierta de la web: dominios no vistos, generadores nuevos, texto parafraseado,
++traducciones automáticas, contenido híbrido humano-IA (que es ya el caso mayoritario).
++
++Es el riesgo número uno y **no tiene solución técnica completa**. Solo mitigación honesta.
++
++**Mitigación.**
++- Abstención obligatoria como estado por defecto, no como excepción.
++- Predicción conforme para dar garantía de cobertura sobre la tasa de error, en lugar de una
++  puntuación sin respaldo estadístico.
++- Corpus de evaluación propio con *hard negatives*: texto de no nativos, escritura técnica,
++  traducciones, texto editado por humanos a partir de un borrador de IA.
++- Publicar la matriz de rendimiento por idioma y dominio, incluidas las celdas malas.
++- Recalibración periódica desacoplada del reentrenamiento: `calibrationId` versionado aparte.
++
++**Riesgo residual: alto y permanente.** Se gestiona con posicionamiento (evidencia, no
++veredicto), no con ingeniería. Cualquier plan que asuma resolverlo es un plan defectuoso.
++
++---
++
++## R-02 · Sesgo contra hablantes no nativos · P5 I5
++
++**Riesgo.** Reproducir el resultado de Stanford: 61,3 % de falsos positivos en textos de no
++nativos. Además del daño a personas, es un riesgo existencial de reputación y un vector de
++demanda.
++
++**Mitigación.**
++- Detección de idioma y de perfil de escritura **antes** de puntuar. Fuera del conjunto validado,
++  abstención automática.
++- Métrica de equidad como *gate* de release: la diferencia de FPR entre subgrupos (nativo /
++  no nativo, por idioma) debe estar por debajo de un umbral fijado; si no, no se publica.
++- Conjunto de evaluación específico de equidad, mantenido y ampliado, con revisión externa.
++- El producto nunca emite un veredicto sobre la *autoría de una persona identificada*. Evalúa
++  contenido, no personas. En modo académico esto es explícito en la interfaz.
++
++**Riesgo residual: medio.** La mitigación funciona pero requiere disciplina sostenida de release.
++
++---
++
++## R-03 · Rendimiento: la extensión ralentiza la web · P4 I5
++
++**Riesgo.** Es la causa principal de desinstalación en esta categoría. El coste es acumulativo:
++extracción del DOM, decodificación de imágenes, inferencia, reposicionamiento del overlay.
++
++**Mitigación.**
++- Presupuestos numéricos verificados en CI (ver [`03-arquitectura.md`](./03-arquitectura.md#9-presupuesto-de-rendimiento)).
++- Cero inferencia en el hilo principal de la página. Cero inferencia en el content script.
++- `IntersectionObserver` como disparador; nada fuera del viewport.
++- `scheduler.postTask` con prioridad `background` y `requestIdleCallback`.
++- Presupuesto por página que se agota: análisis parcial antes que página lenta.
++- Interruptor de emergencia: si se detecta contención, la extensión se autolimita y lo dice.
++- Suite Playwright que mide FPS durante scroll en 20 sitios reales y falla el build ante
++  regresión.
++
++**Riesgo residual: bajo,** si los presupuestos se mantienen en CI desde el primer commit. Si se
++añaden después, no se recuperan nunca.
++
++---
++
++## R-04 · Fragmentación entre navegadores · P4 I4
++
++**Riesgo.** Cinco navegadores, tres modelos de background distintos, WebGPU desigual, cuotas de
++almacenamiento distintas, `offscreen` solo en Chromium, y Safari con un ciclo de publicación
++completamente ajeno.
++
++**Mitigación.**
++- Abstracción `RuntimeHost` con una implementación por plataforma, aislada en
++  `apps/extension/platform/`. Es el único lugar con código específico de navegador.
++- WXT para el build multi-target.
++- Matriz E2E en CI: Chromium y Firefox en cada PR; Safari en nightly sobre runner macOS.
++- Safari fuera del MVP, presupuestado como proyecto propio con Xcode y cuota de desarrollador.
++
++**Riesgo residual: medio.** Safari seguirá siendo caro; se acepta.
++
++---
++
++## R-05 · Coste y fricción de descargar modelos · P4 I4
++
++**Riesgo.** 48 MB en Tier 1 y 242 MB en Tier 2. La descarga falla, se interrumpe, agota la cuota
++de almacenamiento o simplemente hace que el usuario abandone durante el onboarding.
++
++**Mitigación.**
++- El producto **es útil sin ningún modelo**: Tier 0 (procedencia, metadatos, heurísticas) funciona
++  al instante tras instalar. El primer valor no depende de una descarga.
++- Descarga reanudable por trozos, con progreso, cancelable.
++- Tamaño anunciado antes de empezar. Nunca descarga silenciosa.
++- Verificación SHA-256 por fichero y firma del manifiesto; fallo → purga, sin estado a medias.
++- Gestión de cuota: comprobar espacio disponible antes; en Safari, avisar de la cuota agresiva.
++- Purga de modelos desde Opciones con espacio recuperado a la vista.
++
++**Riesgo residual: bajo.**
++
++---
++
++## R-06 · Rechazo o retirada en las tiendas · P3 I5
++
++**Riesgo.** Cinco procesos de revisión independientes. Causas típicas: permisos amplios sin
++justificar, código remoto, ofuscación, descripción no coincidente con la funcionalidad,
++recolección de datos no declarada.
++
++**Mitigación.**
++- Permisos mínimos en instalación (ver [`06-modelo-de-permisos.md`](./06-modelo-de-permisos.md)).
++  Es la mitigación de mayor impacto.
++- Los pesos son datos, no código; los binarios WASM se empaquetan. No se ejecuta código remoto en
++  ningún escenario. Documentado explícitamente para el revisor.
++- Sin ofuscación. Source maps disponibles para revisión.
++- Declaración de uso de datos coherente con el código; auditada antes de cada envío.
++- Publicación escalonada por tienda: Chrome primero, resto después de superar revisión.
++- Plan de contingencia: canal de distribución directa (CRX autoalojado para empresas, XPI firmado
++  en AMO) si una tienda retira el producto.
++
++**Riesgo residual: medio.** No es controlable al 100 %; se reduce la superficie.
++
++---
++
++## R-07 · Deuda de rotación de modelos · P4 I3
++
++**Riesgo.** Aparece un generador nuevo, el detector se degrada, y no hay forma de reaccionar sin
++publicar una versión nueva en cinco tiendas y esperar la revisión.
++
++**Mitigación.**
++- Actualización de modelos **desacoplada del ciclo de la tienda**: son datos verificados por
++  firma, no código. Un modelo mejor llega en horas, no en semanas.
++- Feature flags con despliegue por porcentaje para probar un modelo nuevo en una fracción de
++  usuarios antes de generalizarlo.
++- Rollback local automático si el modelo nuevo falla la verificación de arranque.
++- Monitorización de deriva mediante distribución de bandas agregada de la telemetría opt-in: un
++  cambio brusco en la proporción de bandas indica degradación sin necesidad de ver contenido.
++
++**Riesgo residual: bajo.** Esta es una de las ventajas estructurales del diseño.
++
++---
++
++## R-08 · Sitios que se rompen por interferencia del overlay · P3 I4
++
++**Riesgo.** SPAs con diffing de DOM, editores de texto enriquecido, canvas a pantalla completa,
++sitios con CSP estricta o con `MutationObserver` propios.
++
++**Mitigación.**
++- Nunca se envuelve el texto original. `Range` + capa absoluta, o CSS Custom Highlight API donde
++  esté disponible.
++- Un solo nodo raíz con shadow root cerrado.
++- Lista de compatibilidad para sitios conocidos que requieren tratamiento especial, entregada como
++  dato actualizable, no como código.
++- Botón de pánico: "desactivar en este sitio", visible en el popup, un clic.
++- Canal de reporte de sitio roto integrado, que **no envía contenido**, solo el dominio y la
++  versión, y solo si el usuario lo pulsa.
++
++**Riesgo residual: medio.** Inevitable en cierta medida; lo que importa es la velocidad de
++reacción.
++
++---
++
++## R-09 · Memoria en Tier 2 · P3 I4
++
++**Riesgo.** Un modelo Q4 de 242 MB en disco consume bastante más en memoria durante la
++inferencia. En equipos modestos compite con la propia página y puede provocar que el navegador
++mate la pestaña.
++
++**Mitigación.**
++- Tier 2 estrictamente opt-in y bajo demanda; nunca se dispara solo.
++- Sondeo de `navigator.deviceMemory` y de núcleos; en dispositivos por debajo del umbral, Tier 2
++  no se ofrece.
++- Descarga del modelo de memoria tras un periodo de inactividad configurable.
++- Aviso explícito de consumo antes de la primera activación.
++- Tope de tokens por consulta con truncado documentado, no silencioso.
++
++**Riesgo residual: bajo,** dado que es opcional por diseño.
++
++---
++
++## R-10 · Evasión adversaria · P4 I2
++
++**Riesgo.** Existe literatura demostrando que se puede guiar a un LLM para evadir detección, y las
++herramientas de "humanización" son un mercado activo. La paráfrasis destruye tanto las señales
++estadísticas como las marcas de agua.
++
++**Mitigación.** Aceptación parcial y honesta. La procedencia criptográfica no se evade
++parafraseando (se pierde, que es distinto y detectable como ausencia de cadena). La detección de
++múltiples señales independientes eleva el coste de la evasión. Pero **no se promete robustez
++adversaria**, ni en la interfaz ni en el material comercial.
++
++**Riesgo residual: alto y aceptado.** Un producto que prometa lo contrario está mintiendo.
++
++---
++
++## R-11 · Dependencia de proyectos de terceros · P3 I2
++
++**Riesgo.** `distil-ai-slop-detector` (Apache-2.0), wllama, ORT Web y los pesos de los modelos son
++dependencias externas que pueden quedar sin mantenimiento o cambiar de licencia.
++
++**Mitigación.** Interfaz `Detector` que hace a cualquier motor reemplazable en un día. Mirror
++propio de pesos y binarios WASM con verificación de integridad. Auditoría de licencias en CI.
++Ninguna dependencia externa en el kernel.
++
++**Riesgo residual: bajo.**
++
++---
++
++## Resumen
++
++| ID | Riesgo | P | I | P×I | Residual |
++|---|---|---|---|---|---|
++| R-01 | Exactitud en el mundo real | 5 | 5 | 25 | **Alto, permanente** |
++| R-02 | Sesgo contra no nativos | 5 | 5 | 25 | Medio |
++| R-03 | Rendimiento | 4 | 5 | 20 | Bajo |
++| R-04 | Fragmentación de navegadores | 4 | 4 | 16 | Medio |
++| R-05 | Descarga de modelos | 4 | 4 | 16 | Bajo |
++| R-06 | Rechazo en tiendas | 3 | 5 | 15 | Medio |
++| R-07 | Rotación de modelos | 4 | 3 | 12 | Bajo |
++| R-08 | Sitios rotos | 3 | 4 | 12 | Medio |
++| R-09 | Memoria en Tier 2 | 3 | 4 | 12 | Bajo |
++| R-10 | Evasión adversaria | 4 | 2 | 8 | **Alto, aceptado** |
++| R-11 | Dependencias de terceros | 3 | 2 | 6 | Bajo |
++
++Los dos riesgos con residual alto (R-01 y R-10) comparten la misma respuesta: **no se resuelven
++con ingeniería, se gestionan con honestidad de producto.** Esa es la razón de que el
++posicionamiento sea "capa de evidencia" y no "detector".
+diff --git a/docs/08-riesgos-legales.md b/docs/08-riesgos-legales.md
+new file mode 100644
+index 0000000..51643a4
+--- /dev/null
++++ b/docs/08-riesgos-legales.md
+@@ -0,0 +1,213 @@
++> **Aviso.** Este documento es análisis técnico de apoyo elaborado por un equipo de producto,
++> no asesoría jurídica. Cada punto debe verificarse con abogado colegiado en cada jurisdicción
++> antes de lanzar. Las referencias normativas están fechadas y pueden haber cambiado.
++
++# 08 · Riesgos legales
++
++---
++
++## 1. Difamación y daño reputacional a terceros
++
++**El riesgo principal, y el peor entendido de la categoría.**
++
++El producto emite afirmaciones sobre contenido publicado por terceros identificables: un
++periodista, un medio, un autor. Afirmar "este artículo fue generado por IA" cuando no lo fue es
++una afirmación de hecho, falsa, sobre una persona o empresa identificable, publicada a través de
++nuestro software. En varias jurisdicciones eso es potencialmente difamatorio, y el marco de
++responsabilidad de intermediarios protege mal a quien *genera* la afirmación en lugar de
++limitarse a alojarla.
++
++Agravantes específicos de este diseño: la "reputación de dominios" agrega esas afirmaciones en un
++juicio persistente sobre un medio; y el "Informe exportable" las convierte en un documento con
++apariencia pericial.
++
++**Mitigación.**
++
++- Lenguaje de la interfaz revisado por abogado, palabra por palabra. Nunca "es"; siempre
++  "las señales analizadas sugieren", con banda e intervalo.
++- El estado de abstención se muestra como abstención, no como "probablemente humano".
++- Ningún veredicto se presenta como conclusión pericial. Los informes llevan una limitación de
++  uso visible y no omisible.
++- Procedimiento de reclamación para editores: un canal por el que un medio puede impugnar una
++  puntuación, con revisión humana y respuesta con plazo comprometido.
++- La reputación de dominios se publica como **distribución de señales observadas**, con
++  metodología abierta y muestra citada, no como calificación moral. Y con derecho de réplica.
++- Seguro de responsabilidad civil profesional y por errores y omisiones, contratado **antes** del
++  lanzamiento público, no después.
++
++**Residual: medio-alto.** Es el riesgo que más justifica el posicionamiento de "evidencia" frente
++a "veredicto".
++
++---
++
++## 2. Reglamento Europeo de IA
++
++Las obligaciones de transparencia del artículo 50 entran en vigor en agosto de 2026 y exigen que
++las salidas de IA generativa sean identificables, en formato legible por máquina, "efectivo,
++interoperable, robusto y fiable", con enfoque multicapa; y que los deployers etiqueten los
++deepfakes de forma visible y comprensible sin necesidad de herramientas de detección.
++
++**Lectura para XplagiaX.** El artículo 50 obliga a *proveedores y deployers de IA generativa*.
++XplagiaX no genera contenido: lo evalúa. **No es el sujeto obligado del artículo 50.** Esto es una
++oportunidad, no una carga: la norma crea la demanda de verificación que el producto atiende, y el
++marcado legible por máquina que exige es exactamente la señal que Tier 0 lee.
++
++Lo que sí aplica:
++
++- Si en algún momento el producto usa un componente de IA para generar texto de cara al usuario
++  (por ejemplo, resúmenes explicativos redactados por un LLM), ese componente sí queda sujeto a
++  transparencia.
++- El código de buenas prácticas sobre etiquetado y transparencia publicado por la Comisión es la
++  referencia para alinear la terminología del producto con la del regulador.
++- **Riesgo de posicionamiento regulatorio:** presentar el producto como herramienta de
++  cumplimiento del artículo 50 crearía una expectativa de fiabilidad que la tecnología no puede
++  sostener. Se evita esa afirmación comercial de forma explícita.
++
++**Residual: bajo,** con vigilancia normativa continua.
++
++---
++
++## 3. Protección de datos
++
++### 3.1 RGPD y equivalentes
++
++Por diseño, el procesamiento es local y no hay transferencia de contenido. En el análisis
++estándar, **no somos responsables del tratamiento del contenido analizado**: nunca lo recibimos.
++
++Puntos donde sí hay tratamiento y hay que documentarlo:
++
++| Tratamiento | Base jurídica | Notas |
++|---|---|---|
++| Telemetría anónima | Consentimiento (opt-in) | Debe ser anónima de verdad; ver [`09`](./09-riesgos-privacidad.md) |
++| Cuenta y facturación Pro | Ejecución de contrato | Procesador de pagos como encargado |
++| Informe compartido | Consentimiento explícito por acción | El usuario decide qué incluye |
++| Reporte de sitio roto | Consentimiento por acción | Solo dominio y versión |
++
++Obligaciones a cubrir antes del lanzamiento en la UE: registro de actividades de tratamiento,
++evaluación de impacto (DPIA) para la telemetría y para cualquier función de aprendizaje federado,
++política de privacidad específica de la extensión, y representante en la UE si la entidad
++responsable es extracomunitaria.
++
++**Punto abierto sobre la entidad.** El responsable del tratamiento es **XplagiaX LTD**. La
++terminación "LTD" apunta a una constitución en Reino Unido o Irlanda, con consecuencias distintas
++y relevantes: una entidad irlandesa está dentro de la UE y no necesita representante del artículo
++27 del RGPD; una entidad británica está fuera desde el Brexit, se rige por el UK GDPR y **sí
++necesita representante en la UE** para dirigirse al mercado europeo. Se requiere confirmar la
++jurisdicción de constitución antes de redactar la política de privacidad, porque determina el
++régimen aplicable, la autoridad de control competente y el régimen de transferencias
++internacionales.
++
++### 3.2 La trampa de la anonimización
++
++Un identificador de instalación estable convierte la telemetría en datos personales por vía de
++reidentificación. Un dominio hasheado es reversible por fuerza bruta contra una lista de dominios
++conocidos. Ambas cosas están explícitamente prohibidas en el esquema de telemetría, con test en
++CI que falla si un campo prohibido aparece.
++
++### 3.3 Aprendizaje federado
++
++La función propuesta en el brief es el mayor riesgo de privacidad del roadmap. Los gradientes
++pueden filtrar el contenido de entrenamiento, y hay literatura amplia de ataques de inversión.
++Postura del consejo: **no se implementa sin privacidad diferencial con presupuesto ε publicado,
++agregación segura, auditoría externa y DPIA.** Y aun así, opt-in doble. Si no se puede hacer así,
++no se hace. Detalle en [`09-riesgos-privacidad.md`](./09-riesgos-privacidad.md#6-aprendizaje-federado).
++
++**Residual: bajo** en el diseño actual; **alto** si se implementa federado sin las condiciones.
++
++---
++
++## 4. Uso en contextos de decisión sobre personas
++
++El "modo académico" y el "modo empresa" convierten la salida en insumo de decisiones que afectan
++a personas: una acusación de plagio, una sanción laboral. Consecuencias:
++
++- En varias jurisdicciones, decisiones automatizadas con efecto significativo sobre personas están
++  reguladas (artículo 22 del RGPD y equivalentes).
++- La responsabilidad se traslada parcialmente al cliente institucional, pero no se elimina.
++
++**Mitigación.** El producto **nunca emite un veredicto sobre la autoría de una persona
++identificada**. En modo académico produce un informe de señales para una conversación entre
++docente y estudiante, con lenguaje diseñado para eso. Los términos de servicio del plan educativo
++prohíben expresamente el uso como prueba única para una sanción, y esa prohibición se refuerza en
++la propia interfaz, no solo en el contrato.
++
++**Residual: medio.** Se reduce con diseño de interfaz, no con cláusulas.
++
++---
++
++## 5. Licencias de terceros
++
++| Componente | Licencia | Implicación |
++|---|---|---|
++| `distil-ai-slop-detector` | Apache-2.0 | Permisiva. Requiere atribución y aviso de cambios |
++| Pesos Gemma 3 | Términos de uso de Gemma (Google) | **Verificar restricciones de uso comercial y de redistribución.** No es una licencia OSS estándar |
++| wllama / llama.cpp | MIT | Permisiva |
++| ONNX Runtime Web | MIT | Permisiva |
++| DejAIvu | Verificar en el repositorio | Se usa como referencia arquitectónica; si se reutiliza código o pesos, revisar |
++| Datasets de entrenamiento | Variable | El riesgo real está aquí: muchos corpus de detección tienen restricción de uso no comercial |
++
++**Acción bloqueante antes de escribir código.** Auditoría de licencias completa, con atención
++especial a: (a) los términos de Gemma para redistribución de pesos derivados en un producto
++comercial, y (b) la procedencia y licencia de todo dataset usado para entrenar o calibrar. Un
++error aquí contamina el producto entero y se descubre en la due diligence de la ronda, que es el
++peor momento posible.
++
++Auditoría automatizada de licencias en CI desde el primer commit.
++
++**Residual: bajo si se audita ahora; alto si se pospone.**
++
++---
++
++## 6. Propiedad intelectual del contenido analizado
++
++Analizar contenido públicamente accesible en el navegador del propio usuario, sin copiarlo ni
++redistribuirlo, tiene bajo riesgo. Los puntos de atención son:
++
++- Los **informes exportables** sí reproducen fragmentos. Se limita la extensión de las citas y se
++  incluye siempre la fuente. Uso encuadrado en cita e investigación.
++- El **rastreador propio** para reputación de dominios sí hace copias del lado servidor. Debe
++  respetar `robots.txt`, identificarse con un user-agent propio, limitar la tasa y conservar solo
++  las señales derivadas, no el contenido. Existe jurisprudencia relevante y variable sobre
++  scraping según jurisdicción; requiere revisión legal específica.
++
++**Residual: bajo** para la extensión, **medio** para el rastreador.
++
++---
++
++## 7. Consumidor y publicidad
++
++Reclamos como "detecta contenido IA con 95 % de precisión" son afirmaciones cuantificables sobre
++un producto de pago. Si no se sostienen en la práctica, son publicidad engañosa.
++
++Regla de comunicación, aplicable a web, tiendas y material comercial: **toda cifra de rendimiento
++va acompañada del conjunto de evaluación, la fecha y las condiciones.** Sin excepciones, sin
++asteriscos ilegibles. La página de metodología es pública y se actualiza con cada release.
++
++**Residual: bajo,** si se respeta la regla.
++
++---
++
++## 8. Acciones bloqueantes antes de escribir código
++
++1. Auditoría de licencias de modelos y datasets, con dictamen escrito sobre los términos de Gemma.
++2. Revisión legal del lenguaje de la interfaz y de la plantilla de informe.
++3. Redacción de política de privacidad, términos de servicio y DPIA de telemetría.
++4. Decisión sobre licencia del propio producto y sobre qué partes se abren.
++5. Presupuesto y contratación de seguro de responsabilidad civil profesional.
++6. Definición del procedimiento de impugnación para editores.
++
++Ninguna de estas seis es opcional, y las seis son más baratas ahora que en cualquier momento
++posterior.
++
++---
++
++## Fuentes
++
++- [EU AI Act — Article 50: Transparency Obligations](https://artificialintelligenceact.eu/article/50/)
++- [Transparency obligations under Article 50 — Comisión Europea](https://digital-strategy.ec.europa.eu/en/faqs/transparency-obligations-under-article-50-ai-act)
++- [The EU AI Act's Transparency Rules: A Practical Guide to Article 50](https://artificialintelligenceact.eu/transparency-rules-article-50/)
++- [European Commission Publishes Draft Code of Practice on AI Labelling and Transparency — Jones Day](https://www.jonesday.com/en/insights/2026/01/european-commission-publishes-draft-code-of-practice-on-ai-labelling-and-transparency)
++- [Transparency obligations for AI-generated content: from principle to practice — HSF Kramer](https://www.hsfkramer.com/notes/ip/2026-03/transparency-obligations-for-ai-generated-content-under-the-eu-ai-act-from-principle-to-practice)
++- [What constitutes a Deep Fake? (arXiv:2412.09961)](https://arxiv.org/pdf/2412.09961)
++- [The Problem with False Positives: AI Detection Unfairly Accuses Scholars](https://www.tandfonline.com/doi/abs/10.1080/0361526X.2024.2433256)
++- [distil-labs/distil-ai-slop-detector — licencia Apache-2.0](https://github.com/distil-labs/distil-ai-slop-detector)
+diff --git a/docs/09-riesgos-privacidad.md b/docs/09-riesgos-privacidad.md
+new file mode 100644
+index 0000000..cbd30b4
+--- /dev/null
++++ b/docs/09-riesgos-privacidad.md
+@@ -0,0 +1,182 @@
++# 09 · Riesgos de privacidad
++
++La privacidad es el argumento de venta principal. Eso significa que un solo incidente destruye el
++producto entero — no una funcionalidad, el producto. Este documento existe para que no haya
++ninguna decisión de privacidad tomada por defecto o por descuido.
++
++---
++
++## 1. Amenaza que se defiende
++
++Una extensión con permiso de host global ve **todo**: correo, banca, historial clínico,
++documentos internos, mensajes privados. Es una de las posiciones más privilegiadas del ecosistema
++del software de consumo. El mercado de extensiones comprometidas o vendidas a agregadores de datos
++existe precisamente por eso.
++
++XplagiaX pide exactamente ese privilegio. La única razón defendible para concederlo es que la
++arquitectura haga **imposible**, no improbable, el abuso.
++
++---
++
++## 2. Principios operativos
++
++| # | Principio | Cómo se hace verificable |
++|---|---|---|
++| 1 | El contenido nunca sale del dispositivo | Sin acceso a red desde el content script; auditoría del código de red |
++| 2 | Lo que no se guarda no se puede filtrar | Se persisten hashes y agregados, nunca texto |
++| 3 | Los Workers no saben en qué sitio están | La URL no cruza esa frontera. Correlación imposible |
++| 4 | Opt-in significa desactivado por defecto | Estado inicial verificado por test |
++| 5 | El usuario puede ver el payload exacto | Vista previa de telemetría en Opciones, con datos reales |
++| 6 | Borrar es una acción, no un proceso | Un botón, sin retención, sin diálogos disuasorios |
++
++---
++
++## 3. Riesgos y mitigaciones
++
++### P-01 · Fuga de contenido a través de la telemetría · P3 I5
++
++Un campo añadido sin pensar (una URL para depurar, un fragmento de texto en un mensaje de error)
++convierte la telemetría anónima en un registro de navegación.
++
++**Mitigación.** Esquema de telemetría cerrado y versionado, con lista blanca de campos. Test en CI
++que **falla el build** si aparece un campo fuera de la lista o si un valor coincide con patrones
++de URL, correo o texto libre. Los errores se reportan con código y traza, con el mensaje
++saneado y sin argumentos. Revisión obligatoria de un segundo ingeniero para cualquier cambio en el
++esquema.
++
++### P-02 · Reidentificación por telemetría · P3 I4
++
++Aunque no haya identificador, la combinación de versión, plataforma, idioma, tier y patrón horario
++puede singularizar a un usuario.
++
++**Mitigación.** Cohortes en lugar de identificadores (`installBucket` semanal). Agregación de
++métricas en ventanas, no eventos individuales. Muestreo probabilístico. Sin timestamp preciso: solo
++la ventana. La IP se descarta en el borde antes de persistir, y eso se documenta en la política de
++privacidad con el nombre del proveedor.
++
++### P-03 · Fingerprinting de la extensión por parte de los sitios · P4 I3
++
++Un sitio puede detectar la presencia de la extensión —por recursos web accesibles, por el nodo
++inyectado, por temporización— y usarla como señal de rastreo. También puede usarla para
++discriminar: un sitio que genera contenido con IA podría ocultarlo al detectar la extensión.
++
++**Mitigación.** `web_accessible_resources` mínimo y restringido por `matches`. Nodo raíz con
++nombre no adivinable por instalación y **shadow root cerrado**, que impide a la página leer su
++contenido. Sin atributos identificativos en el DOM del host. Se acepta que la eliminación total
++del fingerprinting no es posible; se minimiza y se documenta como limitación conocida.
++
++### P-04 · Análisis en contextos sensibles · P4 I5
++
++Analizar la página del banco, el portal sanitario o el correo del trabajo, aunque sea localmente,
++es indefendible frente al usuario.
++
++**Mitigación.** Lista de exclusión embebida y no desactivable (ver
++[`06-modelo-de-permisos.md`](./06-modelo-de-permisos.md#7-exclusiones-no-negociables)). Pausa
++automática cuando hay un campo de contraseña con foco. Análisis del correo web y de documentos
++solo **bajo demanda explícita**, nunca automático, por muy amplio que sea el permiso concedido.
++
++### P-05 · Historial local como superficie de ataque · P3 I4
++
++Un historial local de páginas analizadas es un objetivo para malware, para el análisis forense de
++un dispositivo confiscado, o para alguien con acceso físico.
++
++**Mitigación.** Solo hashes y agregados, nunca texto ni URL completas — el dashboard funciona con
++dominios y contadores. Retención por defecto de 90 días. Modo incógnito propio: analizar sin
++escribir. Cifrado en reposo del historial con clave derivada de una frase de paso opcional, para
++usuarios en riesgo (periodistas, activistas). Purga automática en ventanas de incógnito del
++navegador.
++
++### P-06 · Informes compartidos que filtran más de lo previsto · P3 I4
++
++El bucle de crecimiento se apoya en informes compartibles. Un informe puede incluir URL, capturas
++o fragmentos que el usuario no pretendía publicar.
++
++**Mitigación.** Vista previa obligatoria antes de compartir, mostrando **exactamente** lo que será
++público. Selección granular de qué se incluye. Enlaces con caducidad configurable y revocables.
++Por defecto, privado; compartir es siempre una acción deliberada. Nunca se indexa sin
++consentimiento (`noindex` por defecto).
++
++### P-07 · Cadena de suministro · P3 I5
++
++Una dependencia comprometida en una extensión con permisos amplios es un escenario de desastre.
++
++**Mitigación.** Dependencias fijadas con lockfile y verificación de integridad. Mínimo número de
++dependencias en runtime; cero dependencias externas en el kernel. Builds reproducibles y
++publicación de hashes de los artefactos. Escaneo automático en CI. Los pesos y binarios WASM se
++sirven desde mirror propio con SHA-256 y firma verificados en cliente. Publicación desde CI con
++credenciales de un solo uso, nunca desde un portátil.
++
++---
++
++## 4. Lo que el producto no hará nunca
++
++Compromisos públicos, escritos en la web y en la ficha de las tiendas. Romper cualquiera de ellos
++es motivo de crisis, y por eso se escriben antes de tener presión comercial para incumplirlos:
++
++- No enviar contenido de páginas a ningún servidor sin acción explícita del usuario en ese momento.
++- No vender, ceder ni compartir datos de usuarios con terceros, en ninguna forma, incluida la
++  agregada.
++- No incluir publicidad ni redes de afiliación.
++- No aceptar pago por rebajar la puntuación de un dominio.
++- No permitir a un administrador de empresa activar la exfiltración de contenido de sus empleados.
++- No construir la reputación de dominios con la navegación de los usuarios.
++
++---
++
++## 5. Reputación de dominios sin vigilar a nadie
++
++El brief pide un sistema de reputación de dominios basado en la proporción histórica de contenido
++detectado como IA. La forma obvia de construirlo —agregando lo que ven los usuarios— es
++**vigilancia**, por muy anónima que se declare: convierte a los usuarios en un panel de medición
++involuntario y crea exactamente el registro de navegación que el producto promete no crear.
++
++**Diseño alternativo, mismo valor y sin ese coste:**
++
++- Un **rastreador propio** del lado servidor analiza páginas públicas con el mismo kernel.
++  Respeta `robots.txt`, se identifica, limita la tasa, y conserva solo señales derivadas.
++- La reputación se calcula sobre esa muestra, con **metodología y tamaño muestral publicados**.
++- Los editores pueden consultar su puntuación, ver la muestra e impugnarla.
++- Los usuarios pueden **contribuir voluntariamente** una URL concreta al corpus, con un clic y
++  sabiendo qué hacen. Contribución activa, no pasiva.
++
++Ventaja secundaria: la muestra es reproducible y auditable, lo que hace la reputación defendible
++frente a una impugnación legal. La versión basada en telemetría no lo sería.
++
++---
++
++## 6. Aprendizaje federado
++
++Postura del consejo: **es la función de mayor riesgo del roadmap y la de menor retorno
++demostrado.** Los gradientes filtran información sobre los datos de entrenamiento; existe
++literatura extensa de ataques de inversión de gradientes.
++
++Condiciones sin las cuales no se implementa, todas simultáneas:
++
++1. Privacidad diferencial con presupuesto ε **publicado** y justificado.
++2. Agregación segura, de modo que el servidor no vea contribuciones individuales.
++3. Auditoría externa independiente antes del despliegue.
++4. DPIA completa.
++5. Opt-in doble, con explicación en lenguaje llano de qué se comparte y qué puede inferirse.
++6. Exclusión automática de cualquier contenido de dominios sensibles.
++
++Si una sola no se cumple, la función no se lanza. La alternativa de menor riesgo, que se
++implementa primero, es el **feedback explícito**: el usuario marca un falso positivo y decide si
++envía el ejemplo. Consentimiento por acto, no por configuración. Con volumen suficiente, esa señal
++mejora la calibración casi tanto y sin ninguno de los seis requisitos anteriores.
++
++---
++
++## 7. Verificabilidad
++
++Prometer privacidad no vale nada sin forma de comprobarla. Compromisos:
++
++- **Código abierto de las partes críticas**: kernel, detectores, capa de red y esquema de
++  telemetría. Cualquiera puede auditar qué sale del dispositivo.
++- **Builds reproducibles** con hashes publicados, para que el artefacto de la tienda sea
++  verificable contra el código.
++- **Auditoría de seguridad externa** antes del lanzamiento público, con informe publicado.
++- **Warrant canary** y política de transparencia sobre requerimientos legales.
++- Un `security.txt` y un proceso de divulgación responsable con plazo de respuesta comprometido.
++
++Esto no es marketing: es la condición para que la afirmación central del producto sea comprobable
++por alguien que no confíe en nosotros. Que es, precisamente, el usuario al que apuntamos.
+diff --git a/docs/10-monetizacion.md b/docs/10-monetizacion.md
+new file mode 100644
+index 0000000..56561b3
+--- /dev/null
++++ b/docs/10-monetizacion.md
+@@ -0,0 +1,185 @@
++# 10 · Estrategia de monetización
++
++## 1. Dónde está realmente el valor
++
++La intuición es cobrar por el veredicto. Es la intuición equivocada: el veredicto es el
++componente que más rápido se comoditiza y el que peor se sostiene científicamente
++(ver [`07-riesgos-tecnicos.md`](./07-riesgos-tecnicos.md#r-01--la-exactitud-del-detector-no-sobrevive-al-mundo-real--p5-i5)).
++
++Se cobra por cuatro cosas que sí resisten:
++
++1. **Profundidad** — analizar más, más a fondo, más formatos.
++2. **Prueba** — convertir señales en un documento defendible ante un tercero.
++3. **Control** — política, despliegue y auditoría a escala de organización.
++4. **Integración** — que el motor funcione dentro del producto de otro.
++
++Los cuatro escalan con el valor que el cliente extrae, no con nuestro coste marginal, que es
++prácticamente cero porque la inferencia corre en el dispositivo del usuario. **La estructura de
++costes es la mejor de la categoría**: los competidores en la nube pagan GPU por cada análisis;
++nosotros pagamos CDN.
++
++---
++
++## 2. Planes
++
++| | **Free** | **Pro** | **Team** | **Enterprise** |
++|---|---|---|---|---|
++| Precio | 0 | 9 USD/mes · 90/año | 15 USD/usuario/mes | Desde 25.000 USD/año |
++| Análisis de texto | Tier 0 + Tier 1 | + Tier 2 | + Tier 2 | + modelos propios |
++| Análisis de imagen | Procedencia + Tier 1 | + saliencia y XAI | idem | idem |
++| Páginas al día | Ilimitado | Ilimitado | Ilimitado | Ilimitado |
++| Historial | 7 días | Ilimitado | Ilimitado | Ilimitado + retención por política |
++| Informes exportables | 3 al mes, con marca | Ilimitados, sin marca | Ilimitados + plantillas | + firma y cadena de custodia |
++| PDF y documentos | — | Sí | Sí | Sí |
++| Vídeo (fotogramas) | — | Sí | Sí | Sí |
++| Motor de reglas | 3 reglas | Ilimitadas | Compartidas por equipo | Política central |
++| Multimodal cruzado | — | Sí | Sí | Sí |
++| Panel administrativo | — | — | Básico | Completo, SSO/SAML, SCIM |
++| Despliegue centralizado | — | — | — | Sí, MDM/GPO |
++| Registro de modelos on-prem | — | — | — | Sí |
++| Auditoría | — | — | Básica | Completa, exportable |
++| API | — | 1.000 llamadas/mes | 10.000/mes | Contractual |
++| SDK | — | — | — | Sí, con licencia |
++| Soporte | Comunidad | Email | Prioritario | SLA + CSM |
++
++### 2.1 El plan gratuito no está lisiado
++
++Regla explícita: **Free debe ser el mejor producto gratuito de la categoría, sin trampas.** Sin
++límite de páginas, sin marca de agua en el overlay, sin cuenta obligatoria, sin caducidad. Un
++usuario gratuito puede usarlo durante años y estar mejor servido que con cualquier alternativa
++de pago de la competencia.
++
++El motivo no es generosidad. Es que la distribución es el activo, y un free tier mutilado destruye
++la distribución para capturar un porcentaje ínfimo de conversión adicional. El límite de Free no
++es la *cantidad* sino la *profundidad y la prueba*: Tier 2, informes sin marca y formatos
++adicionales. Quien los necesita, los necesita de verdad.
++
++### 2.2 Por qué 9 USD
++
++Por debajo de GPTZero y Originality (~15 USD), que es el punto de comparación que el usuario hará.
++Suficiente para que el LTV soporte la adquisición de pago si alguna vez hace falta. Y con coste
++marginal casi nulo, el margen bruto está por encima del 90 % incluso con conversión baja.
++
++---
++
++## 3. API y SDK
++
++Donde está el negocio grande, aunque no el volumen inicial.
++
++**API** (V1.5). El kernel envuelto en un servicio HTTP. Precio por análisis con tramos por
++volumen. Compradores: plataformas de contenido, mercados que necesitan filtrar envíos generados,
++herramientas de moderación, plataformas educativas.
++
++**SDK** (V2). El kernel como paquete npm y como binding WASM, ejecutándose **en la
++infraestructura del cliente o en el navegador de sus usuarios**. Licencia anual más soporte.
++
++El SDK es estratégicamente superior a la API por la misma razón que el producto es local: un
++cliente que no puede enviarnos su contenido —una plataforma sanitaria, una legal, un gobierno— no
++puede comprar la API de nadie, pero sí puede comprar el SDK. Ese segmento está desatendido por
++completo hoy porque toda la competencia es SaaS en la nube.
++
++Que ambos existan sin reescritura es consecuencia directa de la decisión de arquitectura del
++kernel puro. Esa decisión vale más que cualquier funcionalidad del roadmap.
++
++---
++
++## 4. Product Led Growth
++
++### 4.1 Bucle principal: el Informe de Confianza
++
++```mermaid
++flowchart LR
++    A["Usuario analiza<br/>una página"] --> B["Exporta un informe"]
++    B --> C["Lo comparte<br/>Slack · X · email · artículo"]
++    C --> D["Otros lo ven<br/>con nuestra marca"]
++    D --> E["Instalan la extensión"]
++    E --> A
++    D --> F["Algunos son editores<br/>o instituciones"]
++    F --> G["Lead de Team/Enterprise"]
++```
++
++Cada informe exportado en Free lleva marca y enlace. Es el único uso de marca en el producto y
++está justificado: el informe se creó para ser compartido. Quitar la marca es una de las razones
++concretas para pagar Pro, que es la forma correcta de monetizar un bucle viral: **quien más valor
++extrae del bucle es quien más quiere quitarle la marca.**
++
++### 4.2 Momento de conversión
++
++La conversión no se fuerza con muros. Se ofrece exactamente cuando el usuario topa con el límite
++de forma natural:
++
++| Momento | Oferta |
++|---|---|
++| Tier 1 no concluye y hay desacuerdo entre detectores | "Análisis profundo disponible en Pro" |
++| Cuarto informe del mes | "Informes ilimitados y sin marca" |
++| Intenta analizar un PDF | "Documentos en Pro" |
++| Crea la cuarta regla | "Reglas ilimitadas" |
++| Consulta historial de hace más de 7 días | "Historial completo" |
++
++Nunca un modal al instalar. Nunca una cuenta obligatoria para usar el producto.
++
++### 4.3 De Pro a Team a Enterprise
++
++La expansión llega desde dentro: un periodista de una redacción usa Pro, el equipo lo adopta, el
++medio pide facturación única y política común. Se instrumenta con detección de dominio de correo
++corporativo y un flujo de "invitar a mi equipo" sin fricción.
++
++---
++
++## 5. Verticales de alto valor
++
++| Vertical | Problema | Plan | Por qué gana XplagiaX |
++|---|---|---|---|
++| **Periodismo y verificación** | Verificar material sin subirlo a un tercero | Pro / Team | Local. Es un requisito de la profesión, no una preferencia |
++| **Legal y peritaje** | Evidencia con cadena de custodia | Enterprise | Informes firmados, procesamiento local, auditoría |
++| **Educación** | Necesitan la señal, no pueden usar detectores injustos | Team | Abstención y equidad medida son la propuesta entera |
++| **Marketplaces y UGC** | Filtrar envíos generados a escala | API | Coste por análisis y latencia |
++| **Editoriales y medios** | Auditar contenido de colaboradores | Team | Flujo de trabajo, no puntuación suelta |
++| **Sector público** | Verificación con soberanía del dato | Enterprise + SDK | On-prem, sin nube |
++
++El vertical educativo merece una nota: es el que la categoría ha quemado. Entrar ahí requiere
++liderar con la crítica a los detectores —incluida la nuestra— y vender "informe de señales para
++una conversación", nunca "detector de trampas". Es un ciclo de venta más largo y un mercado con
++menos competencia de la que había hace dos años, porque los incumbentes fueron expulsados.
++
++---
++
++## 6. Modelo económico, orden de magnitud
++
++Supuestos deliberadamente conservadores para el año 2 tras el lanzamiento:
++
++| Variable | Valor | Comentario |
++|---|---|---|
++| Instalaciones activas | 500.000 | Alcanzable con distribución en 5 tiendas y bucle de informes |
++| Conversión a Pro | 2 % | Rango bajo para PLG con free tier fuerte |
++| Suscriptores Pro | 10.000 | |
++| ARR Pro | ~1,0 M USD | A 90 USD/año |
++| Cuentas Team | 300 × 8 usuarios | |
++| ARR Team | ~4,3 M USD | |
++| Contratos Enterprise | 12 | |
++| ARR Enterprise | ~0,4 M USD | Precio inicial conservador |
++| API/SDK | ~0,5 M USD | |
++| **ARR total** | **~6,2 M USD** | |
++| Margen bruto | > 90 % | Inferencia en el dispositivo del usuario |
++
++Lo relevante no es la cifra sino la forma: **el margen bruto y la ausencia de coste de inferencia
++son estructurales**, no fruto de optimización. Un competidor en la nube con el mismo ARR gasta en
++GPU un porcentaje de ingresos que nosotros no gastamos, y esa diferencia se reinvierte en
++distribución.
++
++El camino a valoración de mil millones no pasa por multiplicar suscriptores de 9 USD. Pasa por que
++el SDK se convierta en la capa que otros integran —el trayecto de Stripe, Twilio o Plaid en sus
++categorías— y por que el corpus de reputación de dominios sea el registro de referencia que se
++cita. La extensión es el canal de distribución y la prueba pública de que la tecnología funciona;
++no es el negocio final.
++
++---
++
++## 7. Lo que no se hará
++
++- **Publicidad**: incompatible con la promesa de privacidad. No es negociable.
++- **Vender datos agregados**: aunque fueran anónimos, contradice el compromiso público.
++- **Freemium con muro de cuenta**: pedir email antes de aportar valor mata la activación.
++- **Cobrar por precisión**: "más exactitud en el plan Pro" implicaría que el gratuito es
++  deliberadamente peor en la dimensión que puede dañar a una persona. Todos los planes usan la
++  misma calibración y las mismas reglas de abstención. Pro analiza **más**, no **mejor**.
+diff --git a/docs/11-mvp.md b/docs/11-mvp.md
+new file mode 100644
+index 0000000..3edbe19
+--- /dev/null
++++ b/docs/11-mvp.md
+@@ -0,0 +1,160 @@
++# 11 · MVP
++
++## 1. Hipótesis que el MVP debe validar
++
++El MVP no existe para tener funcionalidades. Existe para responder cuatro preguntas, y todo lo que
++no ayude a responderlas está fuera:
++
++| # | Hipótesis | Cómo se mide |
++|---|---|---|
++| H1 | Un análisis local que se abstiene cuando no sabe genera **más** confianza que un porcentaje seguro y falso | Retención D30 y proporción de usuarios que dicen confiar en la herramienta |
++| H2 | El coste de rendimiento es aceptable en la web real | 0 frames perdidos atribuibles en 20 sitios de prueba; desinstalaciones por lentitud < 5 % |
++| H3 | La procedencia (Tier 0) aporta valor por sí sola, antes de cualquier modelo | % de sesiones con veredicto útil sin Tier 1 descargado |
++| H4 | El informe exportable genera propagación | Informes exportados por usuario activo; instalaciones atribuidas a informes |
++
++H3 es la más importante y la más barata de comprobar. Si la procedencia sola ya es útil, el
++producto tiene un camino que no depende de que la detección estadística mejore.
++
++---
++
++## 2. Alcance
++
++### Dentro
++
++**Plataformas.** Chrome y Edge. Un solo artefacto Chromium, dos tiendas.
++
++**Detección de texto.**
++- Tier 0: heurísticas estilométricas, señales estructurales del DOM, etiquetas de plataforma.
++- Tier 1: clasificador destilado ONNX int8, descarga opcional de ~48 MB, en Worker.
++- Fusión de evidencia con LLR, bandas y abstención completa.
++- Idiomas validados en el lanzamiento: **inglés y español**. En cualquier otro, abstención
++  automática y mensaje explícito. Preferimos cubrir dos idiomas bien a diez mal.
++
++**Detección de imagen.**
++- Tier 0 completo: C2PA, IPTC `digitalSourceType`, EXIF, chunks PNG.
++- **Sin clasificador de imagen en el MVP.** Solo procedencia. Es la mitad del trabajo, el 80 % de
++  la fiabilidad, y valida H3 de forma limpia.
++
++**Interfaz.**
++- Overlay no destructivo: capa en shadow root cerrado, tooltip con banda, intervalo, modelo y
++  botón "¿Por qué?".
++- Popup: Trust Score de la página, dos switches (texto/imagen), acción de análisis, excluir sitio.
++- Opciones: sensibilidad (mueve el umbral entre bandas, no desactiva la abstención), tema,
++  idioma de la interfaz, listas de exclusión, gestión de modelos, atajos, borrar datos.
++- Dashboard básico: páginas analizadas, distribución de bandas, dominios más frecuentes, 7 días.
++- Informe exportable en JSON y PDF, con marca.
++- Modo desarrollador oculto: LLR por detector, tiempos, modelo y `calibrationId`.
++
++**Fundamentos.**
++- Monorepo con las fronteras impuestas en CI.
++- Permisos mínimos con escalada progresiva.
++- Gestor de modelos con verificación de hash y firma.
++- Telemetría opt-in, desactivada por defecto, con vista previa del payload.
++- Arnés de benchmark y informe de calibración generado en cada release.
++- E2E en Chromium y presupuestos de rendimiento como *gates* de CI.
++
++### Fuera, explícitamente
++
++Vídeo · PDF y documentos · correo web y redes sociales · clasificador de imagen · saliency maps ·
++Firefox · Safari · Opera · aprendizaje federado · marketplace de plugins · API pública · SDK ·
++modo empresa · reputación de dominios · timeline de cambios · detección multimodal cruzada ·
++alertas en tiempo real · mapa de calor de página · cuentas y pagos.
++
++**Sin cuentas ni pagos en el MVP.** El monedero llega cuando la retención esté probada. Cobrar
++antes de saber si la gente vuelve es optimizar la métrica equivocada.
++
++---
++
++## 3. Plan de 10 semanas
++
++| Semana | Entregable | Criterio de salida |
++|---|---|---|
++| **0** | Bloqueantes legales: auditoría de licencias, dictamen sobre términos de Gemma, revisión del lenguaje de la interfaz | Dictamen escrito. Sin esto no se escribe código |
++| **1** | Monorepo, TS estricto, ESLint con fronteras, CI, WXT, esqueleto de las 5 superficies | `pnpm build` produce extensión instalable; CI verde |
++| **2** | Contratos del kernel: `Evidence`, `Detector`, registro, fusión, bandas, abstención | Kernel al 100 % testeado sin navegador |
++| **3** | Detector de procedencia (C2PA, IPTC, EXIF, PNG) | Corpus de 200 imágenes con y sin credenciales clasificado correctamente |
++| **4** | Detector estilométrico + extracción y normalización en content script | Tier 0 completo en < 5 ms sobre artículo largo |
++| **5** | `RuntimeHost` con offscreen + Workers + ORT Web; `ModelManager` con verificación | Modelo descargado, verificado y ejecutando en Worker |
++| **6** | Detector de texto Tier 1 + integración de la fusión | Primer veredicto p95 < 800 ms |
++| **7** | Motor de overlay | 0 mutaciones del DOM del host; 20 sitios sin romperse; `dispose()` limpio |
++| **8** | Popup, Opciones, Dashboard, modo desarrollador | Recorridos completos, accesibles con teclado |
++| **9** | Benchmark, calibración, informe de equidad, exportación de informes | ECE y FPR dentro de objetivo; *gate* de equidad superado |
++| **10** | Pulido, E2E, presupuestos de rendimiento, envío a tiendas | Enviado a CWS y Edge Add-ons |
++
++La semana 0 no es burocracia. Un problema de licencia en los pesos de Gemma descubierto en la
++semana 8 invalida el trabajo de las semanas 5 a 7.
++
++---
++
++## 4. Equipo mínimo
++
++| Rol | Dedicación | Motivo |
++|---|---|---|
++| Ingeniero de extensiones sénior | 1,0 | Multi-navegador, permisos, overlay |
++| Ingeniero de ML en el navegador | 1,0 | ORT Web, cuantización, gestión de modelos |
++| Investigador de ML / calibración | 0,5 | Corpus, calibración, equidad. **No es opcional** |
++| Diseñador de producto | 0,5 | Es un producto de confianza; la interfaz es el producto |
++| Asesor legal | 0,2 | Semana 0 y revisión de textos |
++
++Cinco personas equivalentes a 3,2 dedicaciones completas durante 10 semanas. El rol de
++calibración es el que más tentación hay de recortar y el único que no se puede recortar: sin él,
++el producto es otro detector sin garantías y pierde su única ventaja.
++
++---
++
++## 5. Criterios de lanzamiento
++
++Todos deben cumplirse. No hay excepciones por calendario.
++
++**Calidad de detección**
++- FPR ≤ 1 % en el corpus humano multilingüe, con abstención activa.
++- Diferencia de FPR entre subgrupos nativo/no nativo ≤ 2 puntos porcentuales.
++- ECE ≤ 0,05 en el conjunto de validación.
++- Tasa de abstención publicada y explicada, no escondida.
++
++**Rendimiento**
++- Primer veredicto p95 ≤ 800 ms; Tier 0 ≤ 5 ms.
++- 0 frames perdidos atribuibles durante scroll en los 20 sitios de prueba.
++- RSS ≤ 180 MB con Tier 1 cargado.
++- Paquete ≤ 10 MB.
++
++**Privacidad y seguridad**
++- Test de CI que verifica que ningún campo prohibido puede salir en la telemetría.
++- Auditoría de que el content script no tiene acceso a red.
++- Sin `host_permissions` en la instalación.
++- Revisión de seguridad interna completada.
++
++**Producto**
++- Los 20 sitios de prueba funcionan sin romperse.
++- Recorridos completos navegables solo con teclado; contraste AA; overlay compatible con lectores
++  de pantalla.
++- Textos legales revisados.
++- El estado de abstención se muestra correctamente y se entiende en pruebas con 5 usuarios.
++
++---
++
++## 6. Los 20 sitios de prueba
++
++Elegidos por cobertura de patrones difíciles, no por popularidad:
++
++Medios (NYT, El País, BBC) · Blogs (Substack, Medium, WordPress) · Social (X, Reddit, LinkedIn) ·
++Documentación (MDN, docs de GitHub) · Comercio (Amazon con reseñas) · SPAs con diffing agresivo
++(Notion, Linear) · Editores (Google Docs — debe **pausarse**, no analizar) · Contenido generado
++(granjas de contenido SEO conocidas) · Galerías (Unsplash, Pinterest) · Sitio con CSP estricta.
++
++Se ejecutan en CI en cada PR. Un sitio roto es un bloqueante de release, no un *issue* para
++después.
++
++---
++
++## 7. Qué se aprende y qué se hace después
++
++| Resultado | Interpretación | Siguiente movimiento |
++|---|---|---|
++| H3 se confirma con fuerza | La procedencia sola vende | Doblar apuesta en C2PA, adelantar el vertical de periodismo y verificación |
++| H1 se confirma | La honestidad es diferenciador real | Liderar la comunicación con la crítica a la categoría; abrir el vertical educativo |
++| H2 falla | Problema existencial | Congelar funcionalidades hasta resolverlo. Nada importa si la web va lenta |
++| H4 falla | El bucle viral no funciona | Replantear crecimiento hacia distribución en tiendas y contenido, no hacia producto |
++
++Si H1 y H3 se confirman y H2 se sostiene, hay producto. El resto del roadmap
++([`12-roadmap.md`](./12-roadmap.md)) asume ese escenario y se reordena si no ocurre.
+diff --git a/docs/12-roadmap.md b/docs/12-roadmap.md
+new file mode 100644
+index 0000000..b2db773
+--- /dev/null
++++ b/docs/12-roadmap.md
+@@ -0,0 +1,246 @@
++# 12 · Roadmap
++
++Cubre los entregables 12 a 17 del brief: V1, V2, Enterprise, Mobile, API y SDK.
++
++Cada fase tiene una **puerta de entrada**: una condición medible sin la cual la fase no empieza,
++aunque el calendario diga que toca. La función de las puertas es impedir que el roadmap se
++ejecute por inercia.
++
++---
++
++## Vista general
++
++```mermaid
++gantt
++    dateFormat YYYY-MM
++    axisFormat %Y-%m
++    title Roadmap XplagiaX
++
++    section Base
++    MVP · Chrome + Edge          :done, mvp, 2026-09, 3M
++    V1 · 5 navegadores           :v1, after mvp, 4M
++    section Plataforma
++    API pública                  :api, 2027-05, 3M
++    V2 · Multimodal              :v2, after v1, 5M
++    SDK embebible                :sdk, 2027-09, 4M
++    section Vertical
++    Enterprise                   :ent, 2027-07, 6M
++    Mobile                       :mob, 2028-01, 6M
++```
++
++---
++
++## V1 · Producto completo multi-navegador
++
++**Puerta de entrada:** MVP con retención D30 ≥ 25 % y H2 (rendimiento) confirmada.
++**Duración:** 4 meses.
++
++### Objetivo
++Pasar de una prueba en dos navegadores a un producto comercial en cinco, con la primera
++monetización.
++
++### Alcance
++
++**Navegadores.** Firefox (event pages, `RuntimeHost` propio) → Opera (mismo artefacto Chromium,
++tienda distinta) → Safari (proyecto Xcode, app contenedora, App Store). Safari es el último por
++coste, no por prioridad estratégica.
++
++**Detección.**
++- Clasificador de imagen Tier 1 con saliency maps, siguiendo el enfoque de DejAIvu: ONNX Runtime
++  Web con explicabilidad por gradientes.
++- Tier 2 de texto opt-in: Gemma-270M vía wllama, o el motor zero-shot que gane el banco de
++  pruebas ([ADR-005](./adr/ADR-005-motor-tier2.md)).
++- Segundo motor de texto independiente para reducir error correlacionado.
++- Idiomas validados: inglés, español, portugués, francés, alemán.
++
++**Producto.**
++- Cuentas, pagos y plan Pro.
++- Informes exportables sin marca, con plantillas.
++- Motor de reglas: umbrales, dominios, acciones.
++- Análisis bajo demanda de PDF y documentos.
++- Dashboard completo: historial, gráficos, dominios, exportación.
++- Alertas configurables por umbral.
++- AI Trust Score por página combinando texto, imagen y metadatos.
++- Mapa de confianza visual de la página.
++- Sistema de feedback: marcar falso positivo, con envío opcional del ejemplo.
++
++**Fundamentos.**
++- Recalibración continua con el feedback recibido.
++- Feature flags con despliegue por porcentaje.
++- Auditoría de seguridad externa publicada.
++- Página pública de metodología con la matriz de rendimiento por idioma y dominio.
++
++### Criterios de salida
++5 navegadores publicados · 100.000 instalaciones activas · conversión a Pro ≥ 1,5 % ·
++FPR y equidad dentro de objetivo en los 5 idiomas · auditoría publicada.
++
++---
++
++## API pública
++
++**Puerta de entrada:** kernel estable durante 2 releases sin cambios incompatibles, y al menos 5
++solicitudes entrantes no provocadas de acceso programático.
++**Duración:** 3 meses. Se solapa con V1 a propósito: el kernel ya existe, es trabajo de envoltura.
++
++### Alcance
++- `POST /v1/analyze` — texto, imagen o URL. Devuelve el objeto `Evidence[]` completo, no un número.
++- `POST /v1/analyze/batch` — asíncrono con webhook.
++- `GET /v1/methodology` — calibración vigente, idiomas validados, versiones de modelo. Público y
++  sin autenticación: la transparencia es parte del producto.
++- Claves, cuotas, límite de tasa, panel de uso.
++- SDKs cliente en TypeScript y Python.
++- Precio por análisis con tramos.
++
++### Compromisos de diseño
++La API devuelve **la misma estructura de evidencia** que la extensión, incluida la abstención. Un
++integrador que quiera un booleano tendrá que decidir él el umbral, y la documentación le explicará
++por qué esa decisión es suya y no nuestra.
++
++**Nunca se registra el contenido enviado.** Se procesa en memoria y se descarta. Auditable, y es
++la razón por la que un cliente sensible elegiría esta API sobre las existentes.
++
++### Criterios de salida
++20 clientes de pago · p95 < 400 ms para texto Tier 1 · disponibilidad 99,9 %.
++
++---
++
++## V2 · Multimodal y análisis profundo
++
++**Puerta de entrada:** V1 completo, 250.000 instalaciones, ARR ≥ 1 M USD.
++**Duración:** 5 meses.
++
++### Alcance
++
++**Nuevas modalidades.**
++- **Vídeo** por extracción de fotogramas, con muestreo adaptativo y análisis en OffscreenCanvas.
++  Solo bajo demanda; el coste computacional lo hace inviable como automático.
++- **Correo web y redes sociales**, bajo demanda explícita. Nunca automático, por muy amplio que
++  sea el permiso: es la categoría de contenido más sensible que existe.
++- **Documentos**: PDF, DOCX, texto plano, con extracción local.
++
++**Análisis cruzado.**
++- **Detección multimodal**: correlacionar texto e imagen para detectar inconsistencias (una imagen
++  que no corresponde al texto, un pie de foto generado sobre una foto real).
++- **Timeline de cambios**: comparar versiones de una página en el tiempo y detectar si el
++  contenido generado se añadió después. Requiere instantáneas locales; se implementa solo con
++  contenido que el usuario haya marcado para seguimiento, nunca de forma pasiva.
++- **Detección de manipulación**: rostros sintéticos y edición facial. Voces clonadas queda para
++  V3 — requiere pipeline de audio completo y su propio corpus.
++
++**Ecosistema.**
++- **Arquitectura de plugins** abierta: manifiesto firmado, sandbox de Worker, permisos declarados
++  por plugin. La interfaz `Detector` ya existe desde el MVP; V2 añade el empaquetado, la firma y
++  el aislamiento.
++- **Reputación de dominios** construida con rastreador propio, con metodología publicada y derecho
++  de réplica (ver [`09-riesgos-privacidad.md`](./09-riesgos-privacidad.md#5-reputación-de-dominios-sin-vigilar-a-nadie)).
++- **A/B testing de modelos** en producción con feature flags.
++
++**Modos verticales.**
++- Modo periodista: informes con cadena de evidencias, exportables y citables.
++- Modo académico: informe de señales para conversación docente-estudiante, con lenguaje diseñado
++  para no acusar y prohibición contractual de uso sancionador único.
++
++### Criterios de salida
++3 modalidades nuevas en producción · marketplace con 10 plugins de terceros · reputación de
++dominios con más de 100.000 dominios muestreados y metodología publicada.
++
++---
++
++## SDK embebible
++
++**Puerta de entrada:** API con 20 clientes y al menos 3 que pidan ejecución en su propia
++infraestructura.
++**Duración:** 4 meses.
++
++### Por qué importa más que la API
++Un cliente que no puede enviar contenido a un tercero —salud, legal, gobierno, banca— no puede
++comprar la API de nadie, incluida la nuestra. Sí puede comprar el SDK. Ese segmento está
++completamente desatendido porque toda la competencia es SaaS en la nube. Es el movimiento con
++mayor potencial de convertir el producto en infraestructura.
++
++### Alcance
++- `@xplagiax/kernel` en npm: el kernel, sin cambios, con adaptadores documentados.
++- Binding WASM para consumo desde otros lenguajes.
++- Runner de servidor autoalojado, en contenedor.
++- Registro de modelos privado para clientes que quieran modelos propios.
++- Licencia comercial anual con soporte y actualizaciones de modelo.
++- Documentación de integración, plantillas de referencia y suite de conformidad para que un
++  integrador verifique que su despliegue reproduce nuestra calibración.
++
++### Criterios de salida
++5 clientes con SDK en producción · ACV medio ≥ 50.000 USD.
++
++---
++
++## Enterprise
++
++**Puerta de entrada:** 3 organizaciones con más de 50 usuarios de Pro pidiendo facturación y
++control central.
++**Duración:** 6 meses, solapado con V2.
++
++### Alcance
++- Panel administrativo: usuarios, política, uso, cumplimiento.
++- Despliegue centralizado por MDM, GPO y `managed_schema`.
++- SSO/SAML y aprovisionamiento SCIM.
++- Política corporativa: umbrales, exclusiones, modalidades permitidas, retención.
++- Registro de auditoría exportable a SIEM.
++- Registro de modelos on-prem y despliegue en red aislada.
++- Modo completamente sin conexión, sin ninguna llamada saliente.
++- SLA, gestor de cuenta, soporte prioritario.
++
++### La línea que no se cruza
++El administrador controla la **configuración**, no la **vigilancia**. No existe, ni existirá, una
++opción que envíe contenido de los empleados a ningún destino. Si un cliente lo exige como
++condición, se pierde el cliente. Está escrito en la documentación comercial precisamente para que
++la conversación ocurra antes de la firma y no después.
++
++### Criterios de salida
++12 contratos · ACV medio ≥ 25.000 USD · certificación SOC 2 Tipo II en curso.
++
++---
++
++## Mobile
++
++**Puerta de entrada:** V2 estable y demanda medida en encuestas de usuarios activos.
++**Duración:** 6 meses.
++
++### La realidad técnica
++Móvil no es un puerto: es un producto distinto.
++
++| Plataforma | Vía | Viabilidad |
++|---|---|---|
++| **Android** | Firefox for Android soporta extensiones; Kiwi y similares | Alta. El artefacto existente casi funciona |
++| **iOS** | Safari Web Extensions en iOS | Media. Restricciones de memoria y de background severas |
++| **App nativa** | Share sheet: analizar lo compartido | **La mejor vía en ambas plataformas** |
++
++Recomendación del consejo: **la app nativa con integración en la hoja de compartir es el producto
++móvil**, no la extensión. El gesto natural en móvil es "compartir esta imagen con XplagiaX", no
++"navegar con una extensión activa". Además esquiva las limitaciones de memoria y de ejecución en
++segundo plano que harían inviable Tier 1 dentro de una extensión móvil.
++
++### Alcance
++- App iOS y Android con extensión de compartir.
++- Tier 0 completo y Tier 1 con modelos cuantizados para móvil (Core ML y NNAPI vía ONNX Runtime
++  Mobile).
++- Extensión para Firefox Android reutilizando el artefacto de escritorio.
++- Sincronización de historial cifrada extremo a extremo, opcional.
++
++### Criterios de salida
++Apps publicadas · 50.000 instalaciones · paridad de Tier 0 con escritorio.
++
++---
++
++## Resumen de puertas
++
++| Fase | No empieza hasta que… |
++|---|---|
++| V1 | Retención D30 ≥ 25 % y rendimiento confirmado |
++| API | Kernel estable 2 releases + 5 peticiones entrantes |
++| V2 | 250.000 instalaciones y ARR ≥ 1 M USD |
++| SDK | 20 clientes de API, 3 pidiendo on-prem |
++| Enterprise | 3 organizaciones pidiendo control central |
++| Mobile | V2 estable y demanda medida |
++
++Ninguna puerta se abre por calendario. Si una fase no cumple su puerta, la respuesta correcta es
++mejorar la fase anterior, no empezar la siguiente. La causa más común de muerte en productos con
++roadmaps ambiciosos es ejecutar la fase 4 con la fase 2 sin validar.
+diff --git a/docs/13-estrategia-crecimiento.md b/docs/13-estrategia-crecimiento.md
+new file mode 100644
+index 0000000..b3385b8
+--- /dev/null
++++ b/docs/13-estrategia-crecimiento.md
+@@ -0,0 +1,150 @@
++# 13 · Estrategia de crecimiento
++
++Cubre los entregables 18, 19 y 20 del brief: crecimiento, adquisición de usuarios y liderazgo
++mundial.
++
++---
++
++## 1. La posición desde la que se compite
++
++Casi toda la categoría vende certeza que no tiene. La posición contraria está libre y es
++defendible:
++
++> **El único detector que te dice cuándo no lo sabe.**
++
++Esto no es humildad de marca. Es el argumento que abre las puertas que la categoría cerró: las
++universidades no retiraron los detectores porque no necesitaran la señal, sino porque la señal
++venía sin garantías y producía acusaciones injustas. Quien llegue con control formal del error y
++abstención entra donde los incumbentes fueron expulsados.
++
++Cuatro mensajes, en este orden y sin variar:
++
++1. **Local.** Tu contenido no sale de tu dispositivo. Verificable: el código de red es abierto.
++2. **Honesto.** Evidencia con intervalos, y abstención cuando no hay base. Publicamos nuestros
++   fallos.
++3. **Completo.** Procedencia criptográfica + señales estadísticas + multimodal.
++4. **En todas partes.** Cinco navegadores, API y SDK.
++
++---
++
++## 2. Fase 1 · Primeros 10.000 usuarios (meses 0–6)
++
++Objetivo: usuarios que **usen** el producto y hablen de él. La métrica de esta fase es retención
++D30, no instalaciones.
++
++**Comunidades donde el problema ya duele**, con contribución antes que promoción:
++
++| Comunidad | Ángulo |
++|---|---|
++| Hacker News | Lanzamiento técnico. El ángulo que funciona es el post de ingeniería sobre calibración y por qué los detectores fallan, con el producto como consecuencia |
++| r/Journalism, r/OSINT, verificadores | La herramienta que no sube tu material a un servidor |
++| Comunidades de fotografía | C2PA y procedencia. Público que ya entiende el problema |
++| r/Teachers, comunidades docentes | El anti-detector: el que se niega a acusar sin base |
++| Product Hunt | Lanzamiento coordinado con V1 |
++
++**Contenido que construye autoridad, no tráfico.** Tres piezas fundacionales, en este orden:
++
++1. *"Por qué los detectores de IA fallan con hablantes no nativos, y qué hicimos al respecto"* —
++   con nuestros propios números de equidad, incluidos los malos.
++2. *"La procedencia gana a la detección: qué es C2PA y por qué lo priorizamos"*.
++3. *"Nuestra metodología de calibración"* — página viva, actualizada en cada release.
++
++La tercera es la más importante y la que menos tráfico traerá. Es la que hace que un periodista,
++un investigador o un CTO decida que somos serios.
++
++**El corpus abierto como jugada de autoridad.** Publicar un benchmark abierto de evaluación de
++detectores —incluyendo casos difíciles y de equidad— y evaluar en él a los competidores **y a
++nosotros mismos, con los resultados malos incluidos**. Quien define el estándar de medida de una
++categoría acaba definiendo la categoría. Es la jugada con mejor relación coste/posición
++disponible, y solo funciona si somos genuinamente transparentes con nuestros propios fallos.
++
++---
++
++## 3. Fase 2 · A 250.000 (meses 6–18)
++
++**Bucle principal: el Informe de Confianza.** Cada informe exportado en el plan gratuito lleva
++marca y enlace, y es un artefacto que existe para ser compartido: en un artículo, en un hilo, en
++un canal de Slack. Se instrumenta la atribución de instalaciones a informes desde el día uno,
++porque este bucle es la hipótesis H4 del MVP y hay que saber pronto si funciona.
++
++**SEO de intención de producto.** No "qué es la IA generativa". Consultas donde el usuario ya
++tiene el problema: *detectar imagen generada por IA*, *verificar si un texto es de ChatGPT*,
++*comprobar credenciales C2PA*. Y una herramienta web gratuita —pegar texto, ver el análisis— que
++capta esa intención y convierte a instalación.
++
++**Optimización de ficha en cinco tiendas.** Es el canal más infravalorado de la categoría. La
++Chrome Web Store envía tráfico de intención altísima y gratis. Se trata como SEO serio:
++palabras clave en el título y la descripción, capturas que muestren el producto real, vídeo corto,
++gestión activa de reseñas, y actualizaciones frecuentes (que la tienda premia).
++
++**Integraciones que amplían la superficie.** Un bot que analiza enlaces bajo demanda en Slack,
++Discord y Telegram. Una acción de GitHub que verifica contenido en pull requests. Cada
++integración es a la vez distribución y demostración de la API.
++
++**Prensa con ángulo, no con lanzamiento.** Un lanzamiento de producto no es noticia. Sí lo es un
++informe periódico —*Estado del contenido generado en la web*— construido sobre nuestro rastreador
++propio con metodología publicada. Es citable, es recurrente, y convierte a la empresa en la fuente
++que los medios llaman cuando escriben sobre el tema.
++
++---
++
++## 4. Fase 3 · Capa de infraestructura (meses 18–36)
++
++Aquí el crecimiento deja de ser de usuarios y pasa a ser de **integraciones**.
++
++- **API y SDK** como producto principal. El objetivo es que aparezcamos en la arquitectura de
++  otros productos, no solo en el navegador de personas.
++- **Alianzas de plataforma.** CMS (WordPress, Ghost), plataformas educativas, herramientas de
++  moderación, marketplaces de UGC. Cada una expone la tecnología a un orden de magnitud más de
++  contenido.
++- **Estándares.** Participación activa en C2PA y en los grupos de trabajo de procedencia. Quien
++  está en la mesa donde se escribe el estándar tiene una ventaja que no se compra con marketing.
++- **Programa académico.** Acceso gratuito para investigación a cambio de evaluación independiente
++  publicada. Genera validación externa, que es la única que convence al comprador institucional.
++
++---
++
++## 5. Métricas por fase
++
++| Fase | Métrica principal | Métrica de contrapeso |
++|---|---|---|
++| 1 | Retención D30 | Desinstalaciones por rendimiento |
++| 2 | Usuarios activos semanales | Ratio de falsos positivos reportados |
++| 3 | Integraciones en producción | Disponibilidad de la API |
++
++La métrica de contrapeso existe para impedir que se optimice la principal deteriorando el
++producto. Ninguna decisión de crecimiento se aprueba si empeora su contrapeso.
++
++**La métrica que gobierna todo lo demás:** *tasa de falsos positivos reportados por usuarios*. Si
++sube, se detiene el crecimiento y se arregla. Un producto de confianza que crece mientras pierde
++precisión está construyendo su propia crisis a mayor escala.
++
++---
++
++## 6. Cómo se convierte esto en el líder mundial
++
++Cuatro condiciones. Ninguna es suficiente sola, y las cuatro se refuerzan:
++
++**1 · Ser el estándar de medida.** El benchmark abierto y el informe periódico sobre el estado del
++contenido generado convierten a la empresa en el árbitro de la categoría. Los competidores acaban
++citando nuestras métricas, que es la posición desde la que se define un mercado.
++
++**2 · Ser la capa que otros integran.** Un usuario se va cuando aparece algo mejor. Una plataforma
++que ha integrado el SDK no se va: tiene coste de cambio, contratos y dependencia técnica. El
++trayecto de referencia es Stripe, Twilio o Plaid — infraestructura invisible y difícil de
++sustituir.
++
++**3 · Tener el foso de datos correcto.** No el contenido de los usuarios, que no tendremos nunca.
++El **corpus de calibración**: falsos positivos reportados voluntariamente, contenido etiquetado
++por procedencia verificada, muestreo longitudinal del rastreador. Ese corpus mejora cada mes, es
++específico de nosotros y no se puede comprar.
++
++**4 · Ser el único en el que se puede confiar.** Código abierto de las partes críticas, builds
++reproducibles, auditorías publicadas, metodología pública, y disposición a publicar los propios
++fallos. En una categoría cuya reputación está dañada, la confianza es la barrera de entrada más
++alta que existe — y la única que un competidor con más capital no puede superar contratando
++ingenieros.
++
++La consecuencia práctica: cada decisión que sacrifique confianza por crecimiento a corto plazo
++destruye más valor del que crea. Esa es la regla que debe sobrevivir a la primera ronda de
++financiación, cuando aparezca la presión para relajarla.
+diff --git a/docs/14-criterios-de-exito.md b/docs/14-criterios-de-exito.md
+new file mode 100644
+index 0000000..00ddaa1
+--- /dev/null
++++ b/docs/14-criterios-de-exito.md
+@@ -0,0 +1,182 @@
++# 14 · Criterios de éxito
++
++Los ocho criterios del brief, convertidos en umbrales medibles. Un criterio sin número no es un
++criterio: es una intención.
++
++---
++
++## 1 · Experiencia de usuario
++
++| Métrica | Objetivo | Cómo se mide |
++|---|---|---|
++| Retención D30 | ≥ 25 % | Cohortes de instalación |
++| Tiempo hasta el primer valor | ≤ 10 s tras instalar | Tier 0 funciona sin descargar nada |
++| Desinstalaciones por rendimiento | ≤ 5 % de las desinstalaciones | Encuesta de desinstalación |
++| Sitios rotos reportados | ≤ 0,1 % de sesiones | Canal de reporte integrado |
++| Comprensión del estado de abstención | ≥ 80 % lo interpretan bien | Pruebas de usabilidad, 5 usuarios por release |
++| Accesibilidad | WCAG 2.2 AA | Auditoría automática + manual con lector de pantalla |
++
++La quinta métrica es inusual y es la más importante. Si el usuario lee "evidencia insuficiente"
++como "es humano", el producto miente aunque el motor sea correcto.
++
++---
++
++## 2 · Precisión y errores
++
++| Métrica | Objetivo | Notas |
++|---|---|---|
++| FPR con abstención activa | ≤ 1 % | Corpus humano multilingüe |
++| Δ FPR entre subgrupos nativo / no nativo | ≤ 2 pp | **Gate de release.** Bloquea la publicación |
++| ECE (error de calibración esperado) | ≤ 0,05 | Más importante que el AUC |
++| Tasa de abstención | Publicada, no minimizada | Una abstención alta es honestidad, no un fallo |
++| Recall en `STRONG_SIGNAL` | ≥ 70 % | Secundario frente al FPR |
++| Precisión de procedencia | ≥ 99,9 % | Es criptografía; un fallo aquí es un bug |
++
++**Asimetría deliberada:** un falso positivo daña a una persona, un falso negativo solo pierde una
++detección. Toda la operación del umbral está sesgada en esa dirección, y no es configurable por el
++usuario.
++
++### Corpus de evaluación
++
++| Conjunto | Contenido | Uso |
++|---|---|---|
++| `human-multiling` | Texto humano en 5 idiomas, incluidos no nativos | FPR y equidad |
++| `generated-current` | Salidas de los generadores vigentes | Recall |
++| `hard-negatives` | Técnico, traducido, muy editado, formal | Robustez |
++| `hybrid` | Escrito por humano y editado con IA, y al revés | El caso mayoritario real |
++| `paraphrased` | Generado y luego parafraseado | Evasión |
++| `provenance` | Con y sin credenciales C2PA | Tier 0 |
++
++El conjunto `hybrid` es el que más importa y el que casi nadie evalúa: la mayor parte del
++contenido real de 2026 no es puramente humano ni puramente generado. Un detector binario evaluado
++solo con extremos reporta cifras que no significan nada.
++
++---
++
++## 3 · Rendimiento
++
++| Métrica | Objetivo | Gate de CI |
++|---|---|---|
++| Primer veredicto, p95 | ≤ 800 ms | Sí |
++| Tier 0 solo | ≤ 5 ms | Sí |
++| Bloqueo del hilo principal por tarea | ≤ 8 ms | Sí |
++| Frames perdidos en scroll | 0 atribuibles | Sí, 20 sitios |
++| RSS con Tier 1 | ≤ 180 MB | Sí |
++| RSS con Tier 2 | ≤ 700 MB | Aviso al usuario |
++| Impacto en LCP | 0 ms | Sí |
++| Paquete de la extensión | ≤ 10 MB | Sí |
++| JS del content script | ≤ 15 KB gzip | Sí |
++
++Todos son *gates* de CI. Una regresión de rendimiento rompe el build igual que un test que falla.
++Los presupuestos que se añaden tarde nunca se recuperan.
++
++---
++
++## 4 · Privacidad y cumplimiento
++
++| Criterio | Verificación |
++|---|---|
++| Cero contenido enviado sin acción explícita | Auditoría de código de red + test de CI |
++| Telemetría sin campos prohibidos | Test que falla el build |
++| Sin `host_permissions` en la instalación | Test del manifiesto |
++| Content script sin acceso a red | Test de arquitectura |
++| Borrado completo en una acción | Test E2E |
++| DPIA completada | Antes del lanzamiento en la UE |
++| Auditoría externa publicada | Antes de V1 |
++| Builds reproducibles | Hashes publicados por release |
++
++---
++
++## 5 · Mantenibilidad
++
++| Métrica | Objetivo |
++|---|---|
++| Cobertura de tests del kernel | ≥ 90 % |
++| Cobertura global | ≥ 75 % |
++| Violaciones de fronteras del monorepo | 0, impuesto en CI |
++| `any` en TypeScript | 0 fuera de `.d.ts` de terceros |
++| Añadir un detector nuevo | ≤ 1 día, sin tocar el núcleo |
++| Publicar un modelo nuevo | ≤ 4 h, sin publicar en tiendas |
++| Tiempo de CI | ≤ 10 min para el pipeline de PR |
++
++La penúltima es la que mide si la arquitectura funciona de verdad: si actualizar un modelo exige
++pasar por la revisión de cinco tiendas, el diseño ha fallado.
++
++---
++
++## 6 · Escalabilidad
++
++| Dimensión | Objetivo |
++|---|---|
++| Usuarios concurrentes | Sin límite: la inferencia es local |
++| CDN de modelos | 10 M de descargas al mes sin degradación |
++| API, p95 | ≤ 400 ms para texto Tier 1 |
++| Disponibilidad de API | 99,9 % |
++| Coste de infraestructura por usuario activo | ≤ 0,02 USD/mes |
++
++La última cifra es la ventaja estructural del producto. Un competidor en la nube paga inferencia
++por análisis; nosotros pagamos ancho de banda una vez por modelo y usuario.
++
++---
++
++## 7 · Monetización
++
++| Métrica | Objetivo año 1 | Año 2 |
++|---|---|---|
++| Instalaciones activas | 100.000 | 500.000 |
++| Conversión a Pro | 1,5 % | 2 % |
++| Churn mensual de Pro | ≤ 5 % | ≤ 3 % |
++| ARR | 250.000 USD | 6 M USD |
++| Margen bruto | ≥ 85 % | ≥ 90 % |
++| Clientes de API | 5 | 50 |
++| Contratos Enterprise | 1 | 12 |
++| NDR | — | ≥ 110 % |
++
++---
++
++## 8 · Ventaja competitiva
++
++Difícil de cuantificar, pero no imposible. Indicadores de que el foso existe:
++
++| Indicador | Señal de éxito |
++|---|---|
++| Citas del benchmark abierto | ≥ 10 citas académicas o de prensa en año 2 |
++| Competidores que publican calibración | Que empiecen a hacerlo. Significa que definimos el estándar |
++| Integraciones de SDK en producción | ≥ 5 en año 2 |
++| Tamaño del corpus de calibración | Creciente cada mes, con contribución voluntaria |
++| Participación en estándares | Miembro activo de C2PA |
++| Cobertura de idiomas validados | 5 en V1, 12 en V2 |
++| Menciones espontáneas como "el detector honesto" | Cualitativo, seguimiento mensual |
++
++---
++
++## 9 · Cuadro de mando
++
++**Semanal:** retención D7/D30 · reportes de falso positivo · frames perdidos p95 · sitios rotos ·
++crashes.
++
++**Por release:** todos los *gates* de CI · ECE y FPR · Δ FPR entre subgrupos · tasa de abstención ·
++tamaño del paquete.
++
++**Mensual:** ARR y conversión · churn · clientes de API · tamaño del corpus · cobertura de
++idiomas.
++
++**Trimestral:** auditoría de privacidad · revisión del benchmark competitivo · revisión de las
++puertas del roadmap.
++
++---
++
++## 10 · Condiciones de parada
++
++Situaciones en las que **se detiene el desarrollo de funcionalidades** hasta resolver:
++
++1. Δ FPR entre subgrupos supera 2 pp → riesgo de daño a personas.
++2. Frames perdidos atribuibles distintos de cero en los sitios de prueba → el producto está
++   rompiendo la web.
++3. Cualquier campo prohibido detectado en telemetría → incidente de privacidad, con notificación
++   pública.
++4. Reportes de falso positivo creciendo dos meses seguidos → el motor se está degradando.
++5. ECE por encima de 0,10 → las cifras que mostramos no significan lo que decimos.
++
++Estas cinco condiciones se escriben ahora, antes de que exista presión comercial para ignorarlas.
++Ese es el único momento en que se pueden escribir con honestidad.
+diff --git a/docs/adr/ADR-001-kernel-puro.md b/docs/adr/ADR-001-kernel-puro.md
+new file mode 100644
+index 0000000..3e0e4a0
+--- /dev/null
++++ b/docs/adr/ADR-001-kernel-puro.md
+@@ -0,0 +1,50 @@
++# ADR-001 · Kernel puro sin dependencias de navegador
++
++## Estado
++Propuesto
++
++## Contexto
++
++El roadmap incluye extensión, API pública, SDK embebible, runner Enterprise on-prem y app móvil.
++Son cinco entornos de ejecución distintos sobre la misma lógica de detección.
++
++El patrón habitual —construir primero la extensión y extraer una librería después— falla de forma
++predecible: para cuando se intenta extraer, la lógica de detección ya depende de `chrome.storage`,
++de `document`, de tipos del DOM y del ciclo de vida del service worker. La extracción se convierte
++en reescritura, se pospone, y los productos de plataforma nunca llegan.
++
++## Decisión
++
++`packages/kernel` es TypeScript puro. **No importa `chrome.*`, `browser.*`, `window`, `document`,
++ni ningún tipo del DOM.** Sus únicas dependencias son interfaces que él mismo define
++(`InferenceRuntime`, `StorageRepo`, `Clock`, `Logger`), inyectadas por el llamante.
++
++La regla se impone con `eslint-plugin-boundaries` y con una comprobación de CI que compila el
++kernel con `lib: ["ES2022"]`, **sin `DOM`**. Si alguien usa un tipo del DOM, no compila.
++
++## Alternativas consideradas
++
++**Extraer la librería después.** Rechazada: es el fallo predecible descrito arriba.
++
++**Kernel con adaptadores opcionales dentro del propio paquete.** Rechazada: los adaptadores
++arrastran tipos de plataforma a la superficie pública y la restricción se erosiona en semanas.
++
++**Un paquete por entorno con lógica duplicada.** Rechazada: cinco copias de la lógica de fusión y
++calibración divergen de inmediato, y la calibración es precisamente lo que no puede divergir.
++
++## Consecuencias
++
++### Positivas
++- API, SDK, Enterprise y móvil son trabajo de envoltura, no de reescritura.
++- El 80 % de la lógica se prueba con Vitest sin levantar un navegador. CI rápido.
++- La calibración es idéntica en todos los entornos por construcción, lo cual es un requisito del
++  producto, no una comodidad.
++- La inversión de dependencias deja de ser aspiracional: está impuesta por el compilador.
++
++### Negativas
++- Más ceremonia inicial. Operaciones que serían una línea con `chrome.storage` exigen definir una
++  interfaz y una implementación.
++- Los desarrolladores acostumbrados a llamar a las APIs de extensión desde cualquier sitio
++  encontrarán la restricción molesta durante las primeras semanas.
++- Algunas optimizaciones específicas de plataforma quedan fuera del kernel y hay que exponerlas
++  por la interfaz, lo cual las hace más verbosas.
+diff --git a/docs/adr/ADR-002-framework-build.md b/docs/adr/ADR-002-framework-build.md
+new file mode 100644
+index 0000000..0dc6626
+--- /dev/null
++++ b/docs/adr/ADR-002-framework-build.md
+@@ -0,0 +1,48 @@
++# ADR-002 · WXT como framework de build multi-navegador
++
++## Estado
++Propuesto
++
++## Contexto
++
++Cinco navegadores objetivo con tres modelos de background distintos: service worker efímero en
++Chromium, event page en Firefox MV3, y el modelo propio de Safari. Cada tienda quiere un artefacto
++distinto y un manifiesto con diferencias reales, no cosméticas.
++
++Mantener a mano cinco configuraciones de build y cinco manifiestos es una fuente permanente de
++errores que solo aparecen en la tienda, después de la revisión.
++
++## Decisión
++
++Usar **WXT** como framework de build de la extensión. Genera los manifiestos por navegador desde
++una definición única, gestiona MV3 en Chromium y MV3 con event pages en Firefox, y produce el
++paquete base para el proyecto Safari.
++
++Vite por debajo, lo que da HMR real durante el desarrollo del content script y de las páginas de
++extensión.
++
++## Alternativas consideradas
++
++**Vite + `@crxjs/vite-plugin`.** Buena experiencia de desarrollo, pero orientado a Chromium.
++Firefox y Safari quedan a mano.
++
++**Plasmo.** Framework completo y capaz. Más opinado sobre estructura de proyecto y sobre React, lo
++cual choca con un monorepo cuyo centro de gravedad es un kernel sin interfaz.
++
++**Configuración propia con Vite/Rollup.** Máximo control. También significa mantener nosotros lo
++que WXT ya mantiene, en un área que no es nuestra ventaja competitiva.
++
++## Consecuencias
++
++### Positivas
++- Un solo origen de verdad para el manifiesto, con diferencias por navegador declaradas.
++- HMR en desarrollo, que en extensiones supone una diferencia grande de velocidad.
++- Menos superficie de error en el área donde los errores se descubren tarde y caro: la revisión de
++  la tienda.
++
++### Negativas
++- Dependencia de un framework de terceros en la ruta crítica del build. Mitigación: WXT es una
++  capa sobre Vite y el *eject* es viable, aunque costoso.
++- Safari sigue necesitando trabajo manual con Xcode y app contenedora. WXT reduce el problema, no
++  lo elimina.
++- Hay que seguir el ritmo de versiones de WXT frente a los cambios de las plataformas.
+diff --git a/docs/adr/ADR-003-modelos-como-datos.md b/docs/adr/ADR-003-modelos-como-datos.md
+new file mode 100644
+index 0000000..dd4b17b
+--- /dev/null
++++ b/docs/adr/ADR-003-modelos-como-datos.md
+@@ -0,0 +1,64 @@
++# ADR-003 · Los pesos son datos descargables, no código empaquetado
++
++## Estado
++Propuesto
++
++## Contexto
++
++Tier 1 pesa unos 48 MB y Tier 2 unos 242 MB (Gemma 3 270M en Q4_K_M). El límite de subida de la
++Chrome Web Store es 2 GB, así que empaquetarlos es técnicamente posible.
++
++También hay una restricción crítica: **Manifest V3 prohíbe la ejecución de código remoto.** Toda
++la lógica ejecutable debe estar en el paquete. La pregunta es si los pesos de un modelo cuentan
++como código.
++
++No lo son. Los pesos son datos que un intérprete empaquetado (ONNX Runtime Web, wllama —ambos
++WASM incluidos en el paquete) consume. Esta distinción es la que hace viable toda la arquitectura,
++y conviene documentarla explícitamente para el revisor de cada tienda.
++
++## Decisión
++
++Los binarios WASM del runtime **se empaquetan**. Los pesos de los modelos **se descargan** tras la
++instalación desde un CDN propio, se verifican y se almacenan en OPFS.
++
++Cada modelo lleva un manifiesto firmado con:
++- SHA-256 por fichero,
++- firma sobre el conjunto de hashes,
++- `calibrationId` que ata el modelo a su curva de calibración,
++- lista de idiomas validados,
++- versión mínima de runtime.
++
++Un modelo que no verifica hash **y** firma no se instancia. No hay forma de omitir la comprobación,
++ni siquiera en desarrollo.
++
++## Alternativas consideradas
++
++**Empaquetar Tier 1 y descargar solo Tier 2.** Tentadora: elimina la fricción de la primera
++descarga. Rechazada porque ata las mejoras de modelo al ciclo de revisión de cinco tiendas, que es
++justamente lo que hay que evitar (ver [ADR-005](./ADR-005-motor-tier2.md) y el riesgo R-07).
++
++**Empaquetar todo.** Paquete de ~290 MB, revisión lenta en todas las tiendas, actualizaciones
++completas por cada cambio de pesos, y una descarga enorme impuesta a todos los usuarios incluidos
++los que solo quieren procedencia. Rechazada.
++
++**Servir los modelos desde Hugging Face directamente.** Rechazada: dependencia de disponibilidad
++de un tercero en la ruta crítica, sin control sobre integridad ni sobre las cabeceras necesarias.
++Se hace mirror propio.
++
++## Consecuencias
++
++### Positivas
++- Paquete por debajo de 10 MB. Revisión rápida en las cinco tiendas.
++- Un modelo mejor llega a los usuarios en horas, no en semanas.
++- El usuario solo descarga lo que va a usar. Tier 0 funciona sin ninguna descarga.
++- Habilita A/B testing de modelos, rollback local y registro privado en Enterprise sin cambios de
++  arquitectura.
++- Actualización diferencial por fichero.
++
++### Negativas
++- La primera experiencia con Tier 1 exige una descarga de 48 MB, con su fricción y su tasa de
++  abandono. Mitigado porque Tier 0 aporta valor inmediato.
++- Hay que operar y pagar un CDN con disponibilidad alta.
++- Se añade complejidad real: verificación, reanudación, gestión de cuota, rollback, versionado.
++- Requiere explicar la distinción datos/código en el envío a cada tienda. Un revisor puede
++  interpretarlo mal y hay que estar preparado para argumentarlo.
+diff --git a/docs/adr/ADR-004-runtime-inferencia.md b/docs/adr/ADR-004-runtime-inferencia.md
+new file mode 100644
+index 0000000..4f3ff18
+--- /dev/null
++++ b/docs/adr/ADR-004-runtime-inferencia.md
+@@ -0,0 +1,66 @@
++# ADR-004 · ONNX Runtime Web como runtime único
++
++## Estado
++Propuesto
++
++## Contexto
++
++El brief pide integrar tanto ONNX Runtime Web como TensorFlow.js, y menciona `ClassifierAI`
++basado en TensorFlow.js entre los motores de imagen.
++
++Hay un dato medido que resuelve la cuestión: los autores de DejAIvu documentan que **usar ONNX
++Runtime Web en lugar de TensorFlow.js reduce la latencia en unos 35 ms por imagen**. En un
++producto cuyo presupuesto para el primer veredicto es de 800 ms y que puede analizar decenas de
++imágenes por página, no es un detalle.
++
++El coste de mantener dos runtimes va más allá de la latencia: duplica el peso de WASM en el
++paquete, duplica la superficie de fallo entre navegadores, obliga a mantener dos rutas de
++aceleración (WebGL/WebGPU en TF.js, WASM+SIMD/WebGPU en ORT) y complica el sondeo de capacidades.
++
++## Decisión
++
++**ONNX Runtime Web es el único runtime de inferencia para Tier 0 y Tier 1.**
++
++Los modelos publicados como TensorFlow.js o SavedModel se convierten a ONNX en el pipeline de
++build, offline. La conversión se valida con un test de equivalencia numérica frente al modelo
++original.
++
++**wllama es la única excepción**, exclusivamente para el path GGUF de Tier 2, que es opt-in
++(ver [ADR-005](./ADR-005-motor-tier2.md)).
++
++Selección de backend en tiempo de ejecución, con degradación silenciosa:
++
++```
++WebGPU  →  WASM + SIMD + threads  →  WASM simple
++```
++
++El sondeo comprueba WebGPU, `crossOriginIsolated`, `SharedArrayBuffer`, núcleos y
++`navigator.deviceMemory`. El resultado se cachea y se expone en el modo desarrollador.
++
++## Alternativas consideradas
++
++**Ambos runtimes, eligiendo por modelo.** Es lo que pide el brief. Rechazada por el coste medido
++en latencia, peso y superficie de fallo, sin beneficio identificado que lo compense.
++
++**Solo TensorFlow.js.** Ecosistema amplio y buen soporte de WebGL. Rechazada: peor latencia
++medida, y el ecosistema de modelos de detección relevante publica en ONNX.
++
++**WebNN.** Prometedor y con aceleración por hardware del sistema. Rechazada por ahora:
++disponibilidad insuficiente en los cinco navegadores objetivo. Se reevalúa en V2 como backend
++adicional detrás de la misma fachada.
++
++## Consecuencias
++
++### Positivas
++- ~35 ms menos por imagen, según la medición publicada por DejAIvu.
++- Un solo binario WASM en el paquete.
++- Una sola ruta de aceleración que probar en cinco navegadores.
++- La fachada `InferenceRuntime` permite añadir WebNN u otro backend sin tocar los detectores.
++
++### Negativas
++- Los modelos de TensorFlow.js requieren un paso de conversión, que puede fallar con operadores
++  poco comunes y exige validación numérica.
++- Se renuncia al backend WebGL de TF.js, que en algunos dispositivos antiguos sin WebGPU podría
++  ser más rápido que WASM+SIMD. Es un caso minoritario y decreciente.
++- Dependencia de un único proyecto para toda la inferencia de Tier 1. Mitigada por la fachada:
++  cambiar de runtime afecta a un paquete, no a los detectores.
+diff --git a/docs/adr/ADR-005-motor-tier2.md b/docs/adr/ADR-005-motor-tier2.md
+new file mode 100644
+index 0000000..00193da
+--- /dev/null
++++ b/docs/adr/ADR-005-motor-tier2.md
+@@ -0,0 +1,87 @@
++# ADR-005 · Selección del motor Tier 2 por medición
++
++## Estado
++Propuesto — la decisión se cierra con datos, no con esta ADR
++
++## Contexto
++
++El brief especifica `distil-ai-slop-detector` como motor principal de texto: Gemma 3 270M
++destilado desde GPT-OSS 120B, Q4_K_M, ~242 MB, wllama sobre WebAssembly, 0,5–2 s por consulta,
++~95 % de exactitud en su conjunto de test, Apache-2.0.
++
++Es un proyecto sólido y el candidato natural. Pero hay tres razones para no fijarlo por decreto:
++
++1. **0,5–2 s por consulta** hace imposible el objetivo de primer veredicto por debajo de 1 s si una
++   página tiene decenas de bloques. No puede ser el motor por defecto.
++2. La literatura zero-shot ofrece alternativas con mejor generalización entre dominios, que es
++   exactamente donde fallan los clasificadores supervisados. **Binoculars** es insensible a la
++   longitud de entrada y generaliza bien con modelos de ~1 B; **Fast-DetectGPT** usa curvatura de
++   probabilidad condicional, necesita un solo modelo y es dos órdenes de magnitud más rápido que
++   DetectGPT.
++3. Un ~95 % en el conjunto de test propio no predice el comportamiento en la distribución abierta
++   de la web, y el criterio que importa no es la exactitud sino el **FPR a igual recall** y la
++   **calibración**.
++
++## Decisión
++
++Tier 2 es **opt-in, bajo demanda y nunca automático**. Su motor concreto se decide con un banco de
++pruebas, no por preferencia.
++
++Candidatos a evaluar, los tres con la misma interfaz `Detector`:
++
++| Candidato | Enfoque | Coste de memoria |
++|---|---|---|
++| `distil-ai-slop-detector` (Gemma 3 270M Q4) | Clasificador destilado | ~242 MB, un modelo |
++| Fast-DetectGPT | Curvatura de probabilidad condicional | Un modelo pequeño |
++| Binoculars | Perplejidad / cross-perplejidad | **Dos modelos simultáneos** |
++
++Criterios de decisión, en orden de peso:
++
++1. **FPR a recall fijo** en `human-multiling` y `hard-negatives`.
++2. **Δ FPR entre subgrupos** nativo / no nativo. Un candidato que falle el *gate* de equidad queda
++   descartado, tenga la exactitud que tenga.
++3. **ECE** tras calibración.
++4. **Independencia respecto de Tier 1**: correlación de errores con el clasificador ONNX. Un
++   segundo motor que se equivoca en los mismos casos no aporta nada como segunda opinión.
++5. Latencia p95 y memoria pico en el navegador.
++
++El criterio 4 es el que suele olvidarse y el que determina si el ensemble reduce falsos positivos
++de verdad o solo los confirma con más confianza.
++
++## Alternativas consideradas
++
++**Fijar Gemma-270M como motor único, según el brief.** Rechazada como decisión previa a la
++medición. Sigue siendo el favorito por madurez, licencia Apache-2.0 y evidencia de funcionamiento
++en navegador; pero se confirma con datos.
++
++**Tier 2 activo por defecto.** Rechazada: 242 MB de descarga, memoria alta y 0,5–2 s por consulta
++harían el producto inaceptable para el usuario mediano.
++
++**Solo Tier 1, sin Tier 2.** Rechazada: hay casos —periodismo, peritaje— donde el usuario acepta
++esperar dos segundos a cambio de una segunda opinión independiente.
++
++## Nota sobre "Extinction"
++
++El brief menciona un proyecto llamado *Extinction* como segundo motor. No se localiza un proyecto
++público identificable con ese nombre en detección de texto generado. La ranura arquitectónica del
++segundo motor existe y está diseñada; el candidato preferente para ocuparla es un detector
++zero-shot por perplejidad, precisamente porque maximiza la independencia respecto del clasificador
++supervisado de Tier 1. Si *Extinction* es una referencia concreta, se pide confirmarla y se evalúa
++en el mismo banco de pruebas.
++
++## Consecuencias
++
++### Positivas
++- La decisión se toma con evidencia, en un producto cuya propuesta de valor es la honestidad
++  estadística. Elegir el motor por intuición contradiría el producto.
++- Los tres candidatos comparten interfaz, así que el banco de pruebas es trabajo reutilizable y no
++  desechable.
++- El criterio de independencia de errores garantiza que el ensemble reduzca falsos positivos en
++  lugar de reforzarlos.
++
++### Negativas
++- Retrasa la decisión y exige construir el arnés de evaluación antes de tener el motor definitivo.
++- Binoculars puede quedar descartado por memoria pese a ser el mejor en calidad, lo cual sería un
++  resultado incómodo pero correcto.
++- Existe el riesgo de que ningún candidato supere el *gate* de equidad, en cuyo caso **Tier 2 no se
++  lanza**. Es un resultado aceptable y debe estar sobre la mesa desde el principio.
+diff --git a/docs/adr/ADR-006-evidencia-llr.md b/docs/adr/ADR-006-evidencia-llr.md
+new file mode 100644
+index 0000000..012c2ea
+--- /dev/null
++++ b/docs/adr/ADR-006-evidencia-llr.md
+@@ -0,0 +1,88 @@
++# ADR-006 · Evidencia como log-likelihood ratio, no probabilidad
++
++## Estado
++Propuesto
++
++## Contexto
++
++El sistema combina señales heterogéneas: una firma criptográfica C2PA, un clasificador
++supervisado, un detector zero-shot, heurísticas estilométricas y feedback del usuario. Hay que
++fusionarlas en un veredicto.
++
++La forma intuitiva —que cada detector devuelva una probabilidad y promediarlas, con o sin pesos—
++tiene dos defectos que producen exactamente los fallos que hunden a esta categoría:
++
++1. **Refuerzo de sesgos compartidos.** Dos detectores entrenados con corpus parecidos se equivocan
++   en los mismos casos. Al promediar, dos errores correlacionados producen un falso positivo con
++   alta confianza aparente. Es el mecanismo por el que un texto de un hablante no nativo acaba
++   marcado con un 89 %.
++2. **No se puede expresar "no lo sé".** Un `0.5` es ambiguo: puede significar "hay evidencia
++   equilibrada en ambos sentidos" o "no tengo ninguna información". Son estados radicalmente
++   distintos y el sistema necesita distinguirlos.
++
++## Decisión
++
++Cada detector devuelve un **log-likelihood ratio calibrado**:
++
++```
++llr = log( P(evidencia | generado) / P(evidencia | humano) )
++```
++
++Positivo apunta a generado, negativo a humano, **cero significa no informativo**.
++
++Cada `Evidence` lleva además:
++- `reliability ∈ [0,1]` — fiabilidad en el contexto actual; cae a 0 fuera del dominio de
++  validación (idioma no soportado, texto demasiado corto).
++- `calibrationId` — el conjunto de calibración que produjo ese LLR. Un LLR sin su calibración es
++  un número sin significado.
++
++Fusión log-lineal con decorrelación:
++
++```
++llr_total = Σ ( llr_i × reliability_i × w_i )
++```
++
++donde `w_i` procede de una matriz de correlación de errores estimada offline sobre el corpus de
++evaluación. Detectores que se equivocan juntos reciben peso conjunto reducido.
++
++**Asimetría de procedencia**, codificada como regla dura: un manifiesto C2PA válido produce un LLR
++dominante con `reliability = 1`; la **ausencia** de manifiesto produce `llr = 0`, nunca un valor
++positivo. La mayor parte de la web legítima no tiene credenciales y las plataformas destruyen
++metadatos al recodificar.
++
++## Alternativas consideradas
++
++**Promedio ponderado de probabilidades.** Simple y comprensible. Rechazada por los dos defectos
++descritos, que no son teóricos sino la causa documentada de los falsos positivos de la categoría.
++
++**Voto por mayoría.** Robusto frente a un detector defectuoso, pero descarta información de
++magnitud y no permite abstención.
++
++**Dempster-Shafer completo.** Modela explícitamente la masa de "desconocido", que encaja
++conceptualmente muy bien. Rechazada por complejidad de implementación y de explicación al usuario;
++la combinación de LLR más `reliability` captura la mayor parte del beneficio.
++
++**Meta-clasificador entrenado sobre las salidas.** Potencialmente más preciso. Rechazada para V1:
++añade un modelo más que calibrar y mantener, y destruye la explicabilidad, que es requisito del
++producto. Reevaluable en V2.
++
++## Consecuencias
++
++### Positivas
++- La independencia entre fuentes es explícita y se puede corregir con la matriz de decorrelación.
++- "No lo sé" es representable (`llr = 0`), que es la base de la abstención
++  ([ADR-007](./ADR-007-abstencion.md)).
++- Los LLR se suman, lo que hace la fusión trivial de auditar y de explicar en el modo desarrollador.
++- La contribución de cada detector al total es directamente legible: es la base de la
++  explicabilidad y del botón "¿Por qué?".
++- Añadir un detector no obliga a recalibrar los demás.
++
++### Negativas
++- Cada detector necesita calibración para producir LLR válidos. No basta con la salida cruda de un
++  clasificador; hay que ajustar una curva sobre un conjunto de validación.
++- La matriz de correlación exige un corpus de evaluación suficiente y se re-estima con cada cambio
++  de modelo.
++- Los LLR no se muestran al usuario: hay que traducirlos a bandas comprensibles, lo que añade una
++  capa de presentación.
++- Es más difícil de explicar internamente que "promediamos las probabilidades", y habrá presión
++  recurrente para simplificarlo.
+diff --git a/docs/adr/ADR-007-abstencion.md b/docs/adr/ADR-007-abstencion.md
+new file mode 100644
+index 0000000..bd72563
+--- /dev/null
++++ b/docs/adr/ADR-007-abstencion.md
+@@ -0,0 +1,82 @@
++# ADR-007 · La abstención es un estado de primera clase
++
++## Estado
++Propuesto
++
++## Contexto
++
++Los detectores de la categoría siempre responden. Ante un texto de 40 palabras en un idioma que el
++modelo apenas vio, devuelven "23 % IA" con la misma presentación que ante un artículo de 3.000
++palabras en inglés. El usuario no tiene forma de distinguir un resultado fundado de uno inventado.
++
++Esto es el origen del daño documentado: 61,3 % de falsos positivos en ensayos TOEFL de hablantes
++no nativos, universidades retirando las herramientas, personas acusadas injustamente. El fallo no
++está solo en el modelo: está en un diseño que **no permite al sistema decir que no sabe**.
++
++## Decisión
++
++`INSUFFICIENT_EVIDENCE` es un veredicto de primera clase, no un error ni un caso límite. Es el
++**estado por defecto** del que hay que salir con evidencia.
++
++Cuatro bandas, y nunca un porcentaje desnudo:
++
++| Banda | Significado |
++|---|---|
++| `PROVENANCE_CONFIRMED` | Credencial criptográfica verificada. Certeza |
++| `STRONG_SIGNAL` | Varias señales independientes concuerdan |
++| `WEAK_SIGNAL` | Indicios insuficientes para afirmar |
++| `INSUFFICIENT_EVIDENCE` | Abstención |
++
++Condiciones de abstención obligatoria, **no configurables por el usuario ni por el administrador
++de una organización**:
++
++1. Texto por debajo del mínimo de tokens validado (indicativo: 150).
++2. Idioma fuera del conjunto validado para el modelo cargado.
++3. El intervalo de predicción conforme cruza el umbral de decisión.
++4. Desacuerdo alto entre detectores independientes de fiabilidad similar.
++
++El ajuste de "sensibilidad" y los modos "estricto" y "relajado" del brief **mueven el umbral entre
++`WEAK_SIGNAL` y `STRONG_SIGNAL`. No desactivan la abstención.** No existe una configuración que
++permita al producto ser injusto.
++
++## Reglas de presentación
++
++- `INSUFFICIENT_EVIDENCE` se muestra como *"No hay evidencia suficiente para evaluar este
++  contenido"*, con el motivo concreto. **Nunca como "probablemente humano"**: son afirmaciones
++  distintas y confundirlas es el fallo que se está corrigiendo.
++- La tasa de abstención se publica en la página de metodología. Una abstención alta es honestidad
++  medida, no una deficiencia que ocultar.
++- Que el usuario entienda correctamente este estado es un criterio de lanzamiento verificado en
++  pruebas de usabilidad ([`14-criterios-de-exito.md`](../14-criterios-de-exito.md#1--experiencia-de-usuario)).
++
++## Alternativas consideradas
++
++**Siempre dar un número, con un indicador de confianza aparte.** Es lo que hace la categoría.
++Rechazada: la evidencia muestra que los usuarios leen el número e ignoran el indicador. El número
++es el mensaje.
++
++**Umbral configurable sin mínimo.** Rechazada: permitiría a un cliente institucional configurar el
++producto para acusar con poca base, que es precisamente el uso que hay que impedir.
++
++**Abstención solo por longitud.** Insuficiente: el idioma y el desacuerdo entre detectores son
++causas igual de importantes.
++
++## Consecuencias
++
++### Positivas
++- Es el diferenciador central del producto y el argumento que abre el mercado educativo, del que
++  los incumbentes fueron expulsados.
++- Reduce de forma directa el riesgo de difamación y el daño a personas.
++- Convierte la limitación científica de la categoría en una característica honesta.
++- Da un marco para crecer: cada idioma o dominio validado reduce la abstención de forma medible y
++  publicable.
++
++### Negativas
++- Un porcentaje de usuarios verá "no lo sé" y percibirá el producto como inferior a uno que
++  siempre responde. **Se acepta esa pérdida**, y hay que decírselo al equipo comercial antes de
++  que la descubra en una demo.
++- Complica la comunicación: es más difícil vender "a veces no te lo digo" que "detecta IA".
++- Requiere trabajo de diseño considerable para que la abstención se lea como rigor y no como
++  fallo.
++- Presión interna recurrente para relajarlo cuando la conversión baje. Por eso está en una ADR y
++  no en una opción de configuración.
+diff --git a/docs/adr/ADR-008-overlay-no-destructivo.md b/docs/adr/ADR-008-overlay-no-destructivo.md
+new file mode 100644
+index 0000000..ab8b8e0
+--- /dev/null
++++ b/docs/adr/ADR-008-overlay-no-destructivo.md
+@@ -0,0 +1,80 @@
++# ADR-008 · Overlay sin mutar el DOM del host
++
++## Estado
++Propuesto
++
++## Contexto
++
++El brief exige que la extensión no modifique permanentemente el DOM y que todo sea reversible.
++Más allá del requisito, hay una razón práctica: **romper sitios web es la causa número uno de
++reseñas de una estrella y de desinstalaciones en esta categoría.**
++
++La implementación habitual —envolver los rangos de texto en `<mark>` o `<span>`— rompe:
++- React, Vue y cualquier framework con reconciliación de DOM, que detecta nodos inesperados;
++- editores de texto enriquecido, donde altera el contenido editable;
++- sitios con `MutationObserver` propios;
++- selección de texto, copiado y funciones de búsqueda del navegador.
++
++## Decisión
++
++**El DOM del host no se modifica en ningún caso.** La única inserción es un nodo raíz:
++
++```
++document.body
++  └── <xpx-root-{id-por-instalación}>   ← shadow root CERRADO
++        ├── capa de resaltados
++        ├── capa de superposiciones de imagen
++        └── capa de tooltips
++```
++
++**Resaltado de texto sin envolver.** Dos estrategias, por orden de preferencia:
++
++1. **CSS Custom Highlight API** donde esté disponible: resalta objetos `Range` sin tocar el árbol
++   en absoluto. Es la solución correcta.
++2. **Capa geométrica** como respaldo: `Range.getClientRects()` da la geometría de cada línea, y se
++   dibujan rectángulos posicionados en la capa del shadow root. El texto original nunca se toca.
++
++**Superposiciones de imagen.** No se reemplaza ni se envuelve el `<img>`. Se posiciona una capa
++sobre su rectángulo y se oculta cuando sale del viewport.
++
++**Reposicionamiento.** `IntersectionObserver` y `ResizeObserver` para invalidar geometría, con
++recálculo agrupado en `scheduler.postTask` con prioridad `background`. Nunca listeners de `scroll`
++sin agrupación.
++
++**Limpieza.** `dispose()` elimina el nodo raíz y desconecta los observadores. La página queda
++exactamente como estaba, sin residuos ni atributos.
++
++## Alternativas consideradas
++
++**Envolver rangos en `<mark>`.** Simple, resaltado perfecto que sigue al texto sin recalcular.
++Rechazada: rompe frameworks, editores y la selección del usuario.
++
++**Reemplazar la imagen por un `<canvas>`.** Permitiría dibujar el mapa de saliencia directamente.
++Rechazada: cambia el layout, rompe lazy loading, srcset y galerías.
++
++**Iframe superpuesto.** Aislamiento perfecto. Rechazada: coste de rendimiento por overlay y
++problemas de gestión de eventos de puntero.
++
++**Shadow root abierto.** Más fácil de depurar. Rechazada: permite a cualquier script de la página
++leer nuestro contenido, lo que expone qué se ha marcado y facilita el fingerprinting.
++
++## Consecuencias
++
++### Positivas
++- Los sitios no se rompen. Es la mitigación de mayor impacto sobre la métrica que más pesa en la
++  retención.
++- Reversibilidad total con una llamada.
++- Sin colisiones de CSS en ninguna dirección.
++- El shadow root cerrado limita el fingerprinting por parte de la página.
++- Selección, copiado y búsqueda del navegador siguen funcionando con normalidad.
++
++### Negativas
++- **Considerablemente más complejo.** Hay que mantener geometría sincronizada con un documento que
++  cambia por debajo.
++- Coste de recálculo en páginas con layout muy dinámico. Mitigado con agrupación y con presupuesto
++  de trabajo.
++- Casos difíciles: texto dentro de otros shadow roots, iframes de terceros, `position: sticky`,
++  contenedores con scroll propio, transformaciones CSS. Cada uno necesita tratamiento.
++- El respaldo geométrico puede desalinearse momentáneamente durante animaciones.
++- Depurar con un shadow root cerrado es más incómodo; se compensa con una utilidad de inspección
++  en el modo desarrollador.
+diff --git a/docs/adr/ADR-009-permisos-progresivos.md b/docs/adr/ADR-009-permisos-progresivos.md
+new file mode 100644
+index 0000000..da68336
+--- /dev/null
++++ b/docs/adr/ADR-009-permisos-progresivos.md
+@@ -0,0 +1,67 @@
++# ADR-009 · Sin `host_permissions` en la instalación
++
++## Estado
++Propuesto
++
++## Contexto
++
++Para analizar automáticamente las páginas que visita el usuario —requisito explícito del brief—
++hace falta permiso de host amplio. Pedirlo en la instalación es lo simple: el código se
++simplifica, el análisis funciona desde el primer segundo.
++
++También produce el aviso más agresivo del ecosistema: *"Leer y cambiar todos tus datos en todos
++los sitios web"*, mostrado justo antes de instalar, en un producto cuyo argumento central es la
++privacidad. La contradicción es visible para el usuario en el peor momento posible, y además
++dispara revisión manual prolongada en las cinco tiendas.
++
++## Decisión
++
++**Cero `host_permissions` en el manifiesto.** Escalada progresiva en tres niveles:
++
++| Nivel | Concesión | Gesto | Resultado |
++|---|---|---|---|
++| 1 | Ninguna persistente | Pulsar el icono | `activeTab`: esta pestaña, esta vez |
++| 2 | Un origen | "Analizar siempre este sitio" | Automático en ese dominio |
++| 3 | Global | Interruptor en Opciones, con explicación | Automático en toda la web |
++
++`optional_host_permissions` declara `http://*/*` y `https://*/*`, solicitados con
++`permissions.request()` desde un gesto del usuario. Nunca de forma programática al arrancar.
++
++El nivel 1 es el estado inicial **y es un producto completo por sí mismo**. El análisis automático
++que pide el brief se alcanza en los niveles 2 y 3, cuando el usuario ya ha comprobado que la
++herramienta le sirve.
++
++La sugerencia de pasar a global aparece **una sola vez**, tras autorizar tres sitios. Si se
++rechaza, no vuelve.
++
++## Alternativas consideradas
++
++**Pedir `<all_urls>` en la instalación.** Lo que hace casi toda la categoría. Rechazada: contradice
++el posicionamiento, empeora la conversión de instalación y ralentiza la revisión en las tiendas.
++
++**Solo `activeTab`, sin escalada.** Máxima privacidad. Rechazada: elimina el análisis automático,
++que es un requisito del brief y una parte real del valor.
++
++**Lista predefinida de dominios frecuentes.** Rechazada: arbitraria, difícil de justificar ante un
++revisor, y con un aviso de instalación igualmente largo.
++
++## Consecuencias
++
++### Positivas
++- Aviso de instalación mínimo. Es una ventaja de conversión medible, no solo una postura ética.
++- Revisión más rápida y con menos fricción en las cinco tiendas (mitigación principal del riesgo
++  R-06).
++- El permiso se concede cuando el usuario ya entiende para qué sirve, que es cuando el
++  consentimiento significa algo.
++- La afirmación de privacidad se vuelve verificable desde el propio manifiesto: cualquiera puede
++  comprobar qué pedimos.
++
++### Negativas
++- Código más complejo: hay que gestionar tres estados de permiso, inyección programática con
++  `scripting`, y revocación en cualquier momento.
++- El usuario tarda más en llegar a la experiencia completa; parte no llegará nunca al nivel 3.
++- Safari tiene un modelo de permisos menos granular y no admite bien la escalada intermedia; se
++  acepta una experiencia degradada allí antes que rebajar el modelo en las otras cuatro
++  plataformas.
++- Hay que instrumentar y vigilar la tasa de escalada, que se convierte en una métrica de producto
++  de primer orden.
+diff --git a/docs/adr/README.md b/docs/adr/README.md
+new file mode 100644
+index 0000000..0f1b9d5
+--- /dev/null
++++ b/docs/adr/README.md
+@@ -0,0 +1,33 @@
++# Decisiones de arquitectura (ADR)
++
++Cada ADR registra una decisión, su contexto, las alternativas descartadas y sus consecuencias
++—incluidas las malas. Un ADR sin consecuencias negativas listadas está incompleto: significa que
++no se evaluó de verdad.
++
++| ADR | Decisión | Estado |
++|---|---|---|
++| [001](./ADR-001-kernel-puro.md) | Kernel puro sin dependencias de navegador | Propuesto |
++| [002](./ADR-002-framework-build.md) | WXT como framework de build multi-navegador | Propuesto |
++| [003](./ADR-003-modelos-como-datos.md) | Los pesos son datos descargables, no código empaquetado | Propuesto |
++| [004](./ADR-004-runtime-inferencia.md) | ONNX Runtime Web como runtime único | Propuesto |
++| [005](./ADR-005-motor-tier2.md) | Selección del motor Tier 2 por medición | Propuesto |
++| [006](./ADR-006-evidencia-llr.md) | Evidencia como log-likelihood ratio, no probabilidad | Propuesto |
++| [007](./ADR-007-abstencion.md) | La abstención es un estado de primera clase | Propuesto |
++| [008](./ADR-008-overlay-no-destructivo.md) | Overlay sin mutar el DOM del host | Propuesto |
++| [009](./ADR-009-permisos-progresivos.md) | Sin `host_permissions` en la instalación | Propuesto |
++
++Todas están en estado **Propuesto**. Pasan a **Aceptado** cuando el solicitante valide la
++arquitectura, que es la condición que el propio brief impone antes de escribir código.
++
++## Formato
++
++```markdown
++# ADR-NNN · Título
++## Estado
++## Contexto
++## Decisión
++## Alternativas consideradas
++## Consecuencias
++### Positivas
++### Negativas
++```
+-- 
+2.43.0
+
