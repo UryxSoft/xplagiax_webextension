@@ -15,10 +15,12 @@ no se evaluó de verdad.
 | [007](./ADR-007-abstencion.md) | La abstención es un estado de primera clase | Propuesto |
 | [008](./ADR-008-overlay-no-destructivo.md) | Overlay sin mutar el DOM del host | Propuesto |
 | [009](./ADR-009-permisos-progresivos.md) | Sin `host_permissions` en la instalación | Propuesto |
-| [010](./ADR-010-extinction-gpl.md) | Extinction: reimplementación limpia por la GPL-3.0 | Propuesto |
+| [010](./ADR-010-extinction-gpl.md) | Extinction como etapa de validación aislada bajo GPL-3.0 | Aceptado |
+| [011](./ADR-011-verificacion-c2pa.md) | Verificación de firma C2PA; `valid` no es `trusted` | Propuesto |
 
-Todas están en estado **Propuesto**. Pasan a **Aceptado** cuando el solicitante valide la
-arquitectura, que es la condición que el propio brief impone antes de escribir código.
+La arquitectura fue validada por el titular y el desarrollo está en curso. Las ADR en
+**Propuesto** siguen siendo revisables: describen decisiones ya implementadas cuyo dictamen final
+—legal en el caso de ADR-010, o de cadena de confianza en ADR-011— sigue pendiente.
 
 ## Formato
 

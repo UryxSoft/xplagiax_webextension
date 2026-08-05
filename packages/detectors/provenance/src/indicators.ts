@@ -33,6 +33,8 @@ export interface ProvenanceScan {
   readonly indicators: readonly Indicator[];
   /** El contenedor traía metadatos, aunque no fueran concluyentes. */
   readonly hasMetadata: boolean;
+  /** Bytes JUMBF del manifiesto C2PA, si lo hay, para verificar la firma. */
+  readonly manifestBytes?: Uint8Array;
 }
 
 /**
@@ -74,6 +76,7 @@ export function scanProvenance(bytes: Uint8Array): ProvenanceScan {
   const segments = readSegments(bytes);
   const indicators: Indicator[] = [];
   let hasMetadata = false;
+  let manifestBytes: Uint8Array | undefined;
 
   for (const seg of segments) {
     const isMetadataSegment =
@@ -97,6 +100,7 @@ export function scanProvenance(bytes: Uint8Array): ProvenanceScan {
     const text = toLatin1(seg.data);
 
     if (isC2paBox(seg.kind, text)) {
+      manifestBytes ??= jumbfPayload(seg.kind, seg.data);
       indicators.push({
         kind: 'c2pa-manifest',
         direction: 'generated',
@@ -160,7 +164,26 @@ export function scanProvenance(bytes: Uint8Array): ProvenanceScan {
     }
   }
 
-  return { format, indicators: dedupe(indicators), hasMetadata };
+  return {
+    format,
+    indicators: dedupe(indicators),
+    hasMetadata,
+    ...(manifestBytes !== undefined ? { manifestBytes } : {}),
+  };
+}
+
+/**
+ * En JPEG, C2PA va en APP11 con una cabecera de 'JP' + identificadores de caja
+ * y paquete antes del JUMBF. En PNG (caBX) y WebP (C2PA) el chunk es el JUMBF
+ * directamente.
+ */
+function jumbfPayload(kind: string, data: Uint8Array): Uint8Array {
+  if (kind !== 'APP11') return data;
+  // 'JP' (2) + CI de caja (2) + número de paquete (2) + Lbox/Tbox del común (8)
+  const HEADER = 10;
+  return data.length > HEADER && data[0] === 0x4a && data[1] === 0x50
+    ? data.subarray(HEADER)
+    : data;
 }
 
 function isC2paBox(kind: string, text: string): boolean {

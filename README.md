@@ -8,7 +8,7 @@
 
 ```bash
 pnpm install
-pnpm test        # 95 tests
+pnpm test        # 118 tests
 pnpm typecheck
 ```
 
@@ -22,7 +22,9 @@ packages/
     scoring/bands.ts                 bandas, umbrales y abstención
     registry/ · pipeline/            registro y orquestación
   detectors/
-    provenance/                    Apache-2.0 · Tier 0 · C2PA, IPTC, EXIF, PNG. Sin modelos
+    provenance/                    Apache-2.0 · Tier 0 · sin modelos
+      containers · indicators        JPEG, PNG, WebP · C2PA, IPTC, EXIF
+      cbor · jumbf · cose · x509     verificación de firma, parseo propio
     extinction-validator/          GPL-3.0 · AISLADO. Etapa de validación heurística
 apps/
   extension/                       GPL-3.0 · un fuente, cinco artefactos
