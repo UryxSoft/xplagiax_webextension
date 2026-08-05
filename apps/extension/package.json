@@ -1,0 +1,26 @@
+{
+  "name": "@xpx/extension",
+  "version": "0.1.0",
+  "description": "Extensión de navegador. Un fuente, cinco artefactos.",
+  "//license": "GPL-3.0: la extensión incluye @xpx/extinction-validator. El kernel y el SDK NO. Ver packages/detectors/extinction-validator/NOTICE.md",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wxt",
+    "build": "pnpm build:chrome && pnpm build:firefox && pnpm build:edge && pnpm build:opera && pnpm build:safari",
+    "build:chrome": "wxt build -b chrome --outDir ../../chrome_extension",
+    "build:firefox": "wxt build -b firefox --outDir ../../firefox_extension",
+    "build:edge": "wxt build -b edge --outDir ../../edge_extesion",
+    "build:opera": "wxt build -b opera --outDir ../../opera_extension",
+    "build:safari": "wxt build -b safari --outDir ../../Safari_extension",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@xpx/kernel": "workspace:*",
+    "@xpx/extinction-validator": "workspace:*"
+  },
+  "devDependencies": {
+    "wxt": "^0.21.3"
+  }
+}
