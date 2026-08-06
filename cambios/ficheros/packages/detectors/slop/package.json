@@ -1,0 +1,26 @@
+{
+  "name": "@xpx/slop-detector",
+  "version": "0.1.0",
+  "description": "Detector de texto generado por IA (Tier 2) sobre distil-ai-slop-detector.",
+  "//license": "Apache-2.0 igual que el proyecto original. A diferencia de @xpx/extinction-validator (GPL), este detector NO contamina el SDK comercial. Ver NOTICE.md",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "NOTICE.md"],
+  "scripts": {
+    "//typecheck": "--build, no -p: referencia al kernel y al runtime, y sin construir sus declaraciones primero no resuelven.",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --build"
+  },
+  "dependencies": {
+    "@xpx/kernel": "workspace:*",
+    "@xpx/runtime": "workspace:*"
+  }
+}
