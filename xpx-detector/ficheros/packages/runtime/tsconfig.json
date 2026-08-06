@@ -1,10 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // Sin "DOM": este paquete corre también fuera del navegador. Lo que
-    // necesita del entorno (temporizadores, señales) se inyecta desde env.ts.
+    // DOM solo por AbortSignal, que es el tipo que atraviesa la fachada.
+    // No se toca document ni window: este paquete corre dentro de un Worker.
     "composite": true,
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "types": [],
     "rootDir": "./src",
     "outDir": "./dist"
