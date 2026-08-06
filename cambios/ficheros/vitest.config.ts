@@ -6,15 +6,7 @@ export default defineConfig({
     alias: {
       '@xpx/kernel': fileURLToPath(new URL('./packages/kernel/src/index.ts', import.meta.url)),
       '@xpx/ipc': fileURLToPath(new URL('./packages/ipc/src/index.ts', import.meta.url)),
-<<<<<<< HEAD
-      '@xpx/provenance': fileURLToPath(
-        new URL('./packages/detectors/provenance/src/index.ts', import.meta.url),
-      ),
-      '@xpx/extinction-validator': fileURLToPath(
-        new URL('./packages/detectors/extinction-validator/src/index.ts', import.meta.url),
-      ),
-=======
->>>>>>> feat: IPC tipado y host de inferencia offscreen en Chromium
+      '@xpx/runtime': fileURLToPath(new URL('./packages/runtime/src/index.ts', import.meta.url)),
     },
   },
   test: {

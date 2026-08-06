@@ -1,0 +1,35 @@
+node_modules/
+dist/
+build/
+.output/
+.wxt/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+.turbo/
+playwright-report/
+test-results/
+*.crx
+*.xpi
+*.zip
+models/*.onnx
+models/*.gguf
+*.tsbuildinfo
+.output/
+apps/extension/public/wllama/
+
+# Artefactos de build por navegador. Son SALIDA, no fuente: se regeneran con
+# `pnpm --filter @xpx/extension build`. Solo el README de cada uno es fuente.
+chrome_extension/*
+firefox_extension/*
+edge_extesion/*
+opera_extension/*
+Safari_extension/*
+!chrome_extension/README.md
+!firefox_extension/README.md
+!edge_extesion/README.md
+!opera_extension/README.md
+!Safari_extension/README.md

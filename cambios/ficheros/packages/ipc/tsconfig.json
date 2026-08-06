@@ -9,9 +9,5 @@
     "rootDir": "./src",
     "outDir": "./dist"
   },
-<<<<<<< HEAD
-  "include": ["src/**/*", "../../../../packages/ipc/src/rpc.ts"]
-=======
   "include": ["src/**/*"]
->>>>>>> feat: IPC tipado y host de inferencia offscreen en Chromium
 }

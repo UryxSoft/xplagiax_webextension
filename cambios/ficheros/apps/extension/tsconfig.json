@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmit": true,
+    // Se apunta al fuente de los paquetes del workspace, no a su `dist`: así el
+    // typecheck no depende de haber compilado antes, y un cambio en un contrato
+    // rompe aquí en el mismo commit en lugar de en el siguiente build.
+    "paths": {
+      "@xpx/ipc": ["../../packages/ipc/src/index.ts"],
+      "@xpx/kernel": ["../../packages/kernel/src/index.ts"],
+      "@xpx/runtime": ["../../packages/runtime/src/index.ts"],
+      "@xpx/slop-detector": ["../../packages/detectors/slop/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "test/**/*", "wxt.config.ts"]
+}

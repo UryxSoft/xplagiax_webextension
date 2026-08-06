@@ -1,0 +1,17 @@
+{
+  "name": "@xpx/provenance",
+  "version": "0.1.0",
+  "description": "Detector de procedencia Tier 0: C2PA, IPTC, EXIF, chunks PNG. Sin modelos.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "//typecheck": "--build, no -p: este paquete referencia al kernel, y sin construir sus declaraciones primero @xpx/kernel no resuelve. --noEmit es incompatible con proyectos referenciados que sí emiten.",
+    "typecheck": "tsc --build"
+  },
+  "dependencies": { "@xpx/kernel": "workspace:*" }
+}
