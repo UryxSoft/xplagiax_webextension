@@ -1,0 +1,99 @@
+/*
+ * Popup. Sobrio a propósito: el producto vende criterio, no adornos, y una
+ * interfaz que grita compite con la información que intenta transmitir.
+ *
+ * Se declara en su propio fichero y no en línea porque la CSP de MV3 restringe
+ * el marcado de las páginas de extensión, y una hoja enlazada nunca depende de
+ * qué directivas acabe heredando el manifiesto.
+ */
+
+:root {
+  color-scheme: light dark;
+  --fondo: #ffffff;
+  --texto: #18181b;
+  --tenue: #71717a;
+  --borde: #e4e4e7;
+  --acento: #1e40af;
+  --acento-texto: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #18181b;
+    --texto: #fafafa;
+    --tenue: #a1a1aa;
+    --borde: #3f3f46;
+    --acento: #3b82f6;
+    --acento-texto: #0b1220;
+  }
+}
+
+body {
+  margin: 0;
+  width: 300px;
+  background: var(--fondo);
+  color: var(--texto);
+  font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main {
+  padding: 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sub {
+  margin: 2px 0 14px;
+  color: var(--tenue);
+  font-size: 12px;
+}
+
+button {
+  width: 100%;
+  padding: 9px 12px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--acento-texto);
+  background: var(--acento);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* El foco debe verse siempre: el recorrido tiene que ser navegable solo con
+   teclado, y un `outline: none` silencioso es la forma más común de romperlo. */
+button:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+#estado:empty {
+  display: none;
+}
+
+#estado {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.nota {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--borde);
+  color: var(--tenue);
+  font-size: 11px;
+}

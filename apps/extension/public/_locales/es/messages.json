@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "XplagiaX",
+    "description": "Nombre de la extensión, tal como aparece en el navegador y en la tienda."
+  },
+  "extDescription": {
+    "message": "Evalúa la procedencia y el origen del contenido de la web. Procesamiento local.",
+    "description": "Descripción corta de la tienda. Se evita prometer 'detección' porque el producto se abstiene cuando no sabe."
+  }
+}

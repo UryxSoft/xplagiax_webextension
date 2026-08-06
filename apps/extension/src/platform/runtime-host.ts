@@ -1,3 +1,8 @@
+import type { AbortLike, Channel, Validator } from '@xpx/ipc';
+import { ChromiumRuntimeHost } from './chromium-host.js';
+import { systemExtensionApi } from './extension-api.js';
+import type { ExtensionApi } from './extension-api.js';
+
 /**
  * El único lugar del sistema donde se permite código específico de navegador.
  * Ver 03-arquitectura.md §5 y la matriz de compatibilidad en §8.
@@ -14,37 +19,39 @@ export interface RuntimeHost {
   readonly platform: Platform;
   /** Prepara el contexto de larga vida donde viven los Workers de inferencia. */
   ensure(): Promise<void>;
-  /** Envía trabajo al host y espera el resultado. */
-  run<TReq, TRes>(channel: string, payload: TReq): Promise<TRes>;
+  /**
+   * Envía trabajo al host y espera el resultado.
+   *
+   * El validador no es opcional a propósito: el resultado cruza una frontera de
+   * proceso, y aceptarlo sin comprobar convertiría `TRes` en una promesa que
+   * nadie cumple.
+   */
+  run<TReq, TRes>(
+    channel: Channel,
+    payload: TReq,
+    validate: Validator<TRes>,
+    signal?: AbortLike,
+  ): Promise<TRes>;
   teardown(): Promise<void>;
 }
 
-export function detectPlatform(): Platform {
-  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
-  if (ua.includes('Firefox')) return 'firefox';
+/**
+ * Identifica la plataforma a partir del user-agent.
+ *
+ * Se recibe por parámetro en lugar de leerlo del global: `navigator` es una
+ * propiedad de solo lectura en varios entornos, y una función que depende de un
+ * global inmutable no se puede probar sin trucos.
+ */
+export function detectPlatform(userAgent: string = readUserAgent()): Platform {
+  if (userAgent.includes('Firefox')) return 'firefox';
   // Safari sin Chrome en el UA. Chromium (Chrome, Edge, Opera) comparte camino.
-  if (ua.includes('Safari') && !ua.includes('Chrome')) return 'safari';
+  if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'safari';
   return 'chromium';
 }
 
-/**
- * Chromium (Chrome, Edge, Opera): documento offscreen, que es el único contexto
- * con vida larga, sin DOM visible y con aislamiento adecuado para WASM.
- */
-export class ChromiumRuntimeHost implements RuntimeHost {
-  readonly platform = 'chromium' as const;
-
-  async ensure(): Promise<void> {
-    throw new Error('Pendiente: chrome.offscreen.createDocument');
-  }
-
-  async run<TReq, TRes>(_channel: string, _payload: TReq): Promise<TRes> {
-    throw new Error('Pendiente');
-  }
-
-  async teardown(): Promise<void> {
-    throw new Error('Pendiente: chrome.offscreen.closeDocument');
-  }
+function readUserAgent(): string {
+  const nav = (globalThis as { navigator?: { userAgent?: string } }).navigator;
+  return nav?.userAgent ?? '';
 }
 
 /** Firefox: no tiene chrome.offscreen. Los Workers cuelgan de la event page. */
@@ -53,7 +60,12 @@ export class FirefoxRuntimeHost implements RuntimeHost {
   async ensure(): Promise<void> {
     throw new Error('Pendiente: Worker desde la event page');
   }
-  async run<TReq, TRes>(_channel: string, _payload: TReq): Promise<TRes> {
+  async run<TReq, TRes>(
+    _channel: Channel,
+    _payload: TReq,
+    _validate: Validator<TRes>,
+    _signal?: AbortLike,
+  ): Promise<TRes> {
     throw new Error('Pendiente');
   }
   async teardown(): Promise<void> {
@@ -67,7 +79,12 @@ export class SafariRuntimeHost implements RuntimeHost {
   async ensure(): Promise<void> {
     throw new Error('Pendiente: página de extensión oculta');
   }
-  async run<TReq, TRes>(_channel: string, _payload: TReq): Promise<TRes> {
+  async run<TReq, TRes>(
+    _channel: Channel,
+    _payload: TReq,
+    _validate: Validator<TRes>,
+    _signal?: AbortLike,
+  ): Promise<TRes> {
     throw new Error('Pendiente');
   }
   async teardown(): Promise<void> {
@@ -75,13 +92,16 @@ export class SafariRuntimeHost implements RuntimeHost {
   }
 }
 
-export function createRuntimeHost(platform = detectPlatform()): RuntimeHost {
+export function createRuntimeHost(
+  platform: Platform = detectPlatform(),
+  api?: ExtensionApi,
+): RuntimeHost {
   switch (platform) {
     case 'firefox':
       return new FirefoxRuntimeHost();
     case 'safari':
       return new SafariRuntimeHost();
     case 'chromium':
-      return new ChromiumRuntimeHost();
+      return new ChromiumRuntimeHost({ api: api ?? systemExtensionApi() });
   }
 }

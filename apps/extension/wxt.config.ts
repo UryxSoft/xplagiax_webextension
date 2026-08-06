@@ -1,3 +1,5 @@
+import { cp, readdir, rm } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { defineConfig } from 'wxt';
 
 /**
@@ -31,20 +33,54 @@ export default defineConfig({
   outDirTemplate: '{{browser}}',
   outDir: '.output',
 
+  /**
+   * MV3 en los cinco destinos, explícito.
+   *
+   * wxt aún usa MV2 por defecto en Firefox y Safari, y aceptarlo produciría
+   * artefactos que contradicen la matriz de compatibilidad (§8) y el propio
+   * requisito del producto. Firefox admite MV3 desde la 109 y Safari desde la
+   * 16.4; ambos usan event page en lugar de service worker, que es exactamente
+   * lo que `RuntimeHost` ya contempla para esas plataformas.
+   */
+  manifestVersion: 3,
+
+  /**
+   * Publica el artefacto en el directorio por navegador que ya existía en el
+   * repositorio.
+   *
+   * Se hace en un hook y no con `--outDir` porque wxt no tiene esa opción de
+   * línea de órdenes: los scripts que la pasaban fallaban antes de construir
+   * nada. Copiar aquí mantiene la tabla de destinos en un solo sitio.
+   */
   hooks: {
-    'build:done': (wxt) => {
+    'build:done': async (wxt) => {
       const target = OUTPUT_DIRS[wxt.config.browser];
       if (target === undefined) {
         wxt.logger.warn(`Sin directorio de salida definido para "${wxt.config.browser}"`);
+        return;
       }
+      const destino = resolve(wxt.config.root, target);
+      await vaciarSalvoDocumentacion(destino);
+      await cp(wxt.config.outDir, destino, { recursive: true });
+      wxt.logger.success(`Artefacto publicado en ${target}`);
     },
   },
 
   manifest: ({ browser, manifestVersion }) => ({
-    name: 'XplagiaX',
-    description:
-      'Evalúa la procedencia y el origen del contenido de la web. Procesamiento local.',
+    // Los textos viven en src/public/_locales. Declarar `default_locale` sin
+    // ese árbol hace que el navegador se niegue a cargar la extensión, así que
+    // nombre y descripción se referencian por clave y no en crudo.
+    name: '__MSG_extName__',
+    description: '__MSG_extDescription__',
     default_locale: 'es',
+
+    /**
+     * El icono es el gesto que concede `activeTab` (ADR-009, nivel 1). Sin él
+     * la extensión no tendría forma legítima de tocar una página, porque no se
+     * declara ningún `content_scripts`: eso pediría permiso de host en la
+     * instalación, que es justo lo que la arquitectura evita.
+     */
+    action: { default_title: '__MSG_extName__', default_popup: 'popup.html' },
 
     // ADR-009: cero host_permissions en la instalación.
     permissions: [
@@ -69,3 +105,24 @@ export default defineConfig({
       : {}),
   }),
 });
+
+/**
+ * Deja el destino limpio antes de copiar, pero conserva el README versionado.
+ *
+ * Un `rm -rf` sin más borraría documentación que sí está en git; no limpiar
+ * dejaría ficheros de builds anteriores mezclados con los nuevos, que es la
+ * forma más silenciosa de publicar un artefacto con restos.
+ */
+async function vaciarSalvoDocumentacion(destino: string): Promise<void> {
+  let entradas: string[];
+  try {
+    entradas = await readdir(destino);
+  } catch {
+    return; // Todavía no existe; `cp` lo creará.
+  }
+  await Promise.all(
+    entradas
+      .filter((e) => e !== 'README.md')
+      .map((e) => rm(resolve(destino, e), { recursive: true, force: true })),
+  );
+}
