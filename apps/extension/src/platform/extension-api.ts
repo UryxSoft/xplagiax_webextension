@@ -10,24 +10,8 @@
  * Si algo no está aquí, no se usa. Ver 03-arquitectura.md §5.
  */
 
-/**
- * Quién abrió el puerto.
- *
- * `tab` presente significa que la conexión viene de un content script, es decir
- * de código que vive dentro de la página del usuario. Es el dato con el que se
- * distingue un contexto privilegiado de uno que no lo es.
- */
-export interface MessageSender {
-  readonly tab?: { readonly id?: number };
-  readonly url?: string;
-  readonly documentId?: string;
-}
-
 /** Un puerto de `runtime.connect`. Es el canal duplex sobre el que va el RPC. */
 export interface PortLike {
-  readonly name: string;
-  /** Solo lo rellena el navegador en el extremo receptor. */
-  readonly sender?: MessageSender;
   postMessage(message: unknown): void;
   disconnect(): void;
   readonly onMessage: {
@@ -54,10 +38,6 @@ export interface OffscreenApi {
 export interface RuntimeApi {
   getURL(path: string): string;
   connect(info: { name: string }): PortLike;
-  readonly onConnect: {
-    addListener(cb: (port: PortLike) => void): void;
-    removeListener(cb: (port: PortLike) => void): void;
-  };
   /**
    * Contextos vivos de la extensión. Es la forma fiable de saber si el
    * documento offscreen sigue en pie tras haberse dormido el service worker.

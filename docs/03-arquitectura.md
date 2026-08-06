@@ -299,11 +299,6 @@ esta categoría.
 | Distribución | CWS / Edge Add-ons / Opera | AMO | App Store, requiere app contenedora macOS/iOS + Apple Developer Program |
 | Revisión | Automática + manual | Manual para código ofuscado | Revisión de App Store |
 
-**Nota de implementación.** `manifestVersion: 3` está fijado explícitamente en `wxt.config.ts`. WXT
-todavía genera MV2 por defecto en Firefox y Safari, y aceptar ese valor produciría artefactos que
-contradicen esta tabla. Lo verifica el build: los cinco destinos salen como MV3, con
-`background.scripts` en Firefox y `service_worker` en el resto.
-
 Consecuencias asumidas:
 
 1. **Safari es el más caro** y no comparte pipeline de publicación. Va en V1.5, no en el MVP.
@@ -365,10 +360,7 @@ con validación en ambos extremos.
 
 - El content script es **no privilegiado**: no puede pedir inferencia arbitraria ni leer el
   historial. Solo puede enviar contenido normalizado del documento en el que vive y recibir
-  veredictos para ese documento. La regla se impone en `startInferenceServer`, que rechaza y
-  desconecta cualquier puerto cuyo `sender.tab` esté presente. No basta con `runtime.onConnect`:
-  un content script puede invocar `runtime.connect` igual que el background, así que si la
-  separación no se comprueba ahí, no existe.
+  veredictos para ese documento.
 - Todo mensaje entrante se valida antes de tocar lógica de negocio. Una página hostil puede
   intentar hablar con nuestro content script.
 - Los canales llevan versión; una versión incompatible degrada en lugar de fallar.

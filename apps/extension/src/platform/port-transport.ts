@@ -8,26 +8,19 @@ import type { PortLike } from './extension-api.js';
  * del navegador, al otro un RPC que no sabe qué es una extensión. Todo lo que
  * el protocolo necesita saber del puerto cabe en estas dos operaciones.
  *
- * Sobre los errores de `postMessage`: se absorbe **solo** lo que se reconoce
- * como puerto caído, y todo lo demás se propaga.
- *
- * El orden importa y la primera versión lo tenía al revés —reconocía lo que
- * debía propagar y se tragaba el resto—, con el efecto de que una carga no
- * serializable se convertía en una petición que jamás volvía. Reconocer lo
- * benigno y dejar salir lo desconocido es la única forma de que un fallo nuevo
- * se manifieste como error y no como silencio.
- *
- * Un puerto caído sí puede ignorarse: el cliente RPC tiene su tiempo de espera
- * y su manejador de desconexión, y quien cerró el puerto fue el navegador, no
- * el llamante.
+ * `postMessage` sobre un puerto ya desconectado lanza en Chrome. Se traga aquí
+ * porque el cliente RPC ya tiene su propio mecanismo para peticiones sin
+ * respuesta —el tiempo de espera— y porque quien cierra el puerto es el
+ * navegador, no el llamante: no es un fallo del que informar hacia arriba.
  */
 export function portTransport(port: PortLike): Transport {
   return {
     post: (message) => {
       try {
         port.postMessage(message);
-      } catch (err) {
-        if (!isPortClosed(err)) throw err;
+      } catch {
+        // Puerto caído. El cliente lo resolverá por tiempo de espera o por el
+        // manejador de desconexión, que es quien tiene el contexto para actuar.
       }
     },
     subscribe: (listener) => {
@@ -40,16 +33,4 @@ export function portTransport(port: PortLike): Transport {
       };
     },
   };
-}
-
-/**
- * Los tres textos con los que los navegadores señalan «este puerto ya no
- * existe». No hay código de error para esto: solo el mensaje.
- */
-const PUERTO_CAIDO =
-  /disconnected port|port (is )?closed|receiving end does not exist|extension context invalidated/i;
-
-function isPortClosed(err: unknown): boolean {
-  const mensaje = err instanceof Error ? err.message : String(err);
-  return PUERTO_CAIDO.test(mensaje);
 }

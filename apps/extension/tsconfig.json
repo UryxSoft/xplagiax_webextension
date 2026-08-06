@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM"],
     "types": [],
     "noEmit": true,
     // Se apunta al fuente de los paquetes del workspace, no a su `dist`: así el
@@ -9,11 +9,7 @@
     // rompe aquí en el mismo commit en lugar de en el siguiente build.
     "paths": {
       "@xpx/ipc": ["../../packages/ipc/src/index.ts"],
-      "@xpx/kernel": ["../../packages/kernel/src/index.ts"],
-      "@xpx/provenance": ["../../packages/detectors/provenance/src/index.ts"],
-      "@xpx/extinction-validator": [
-        "../../packages/detectors/extinction-validator/src/index.ts"
-      ]
+      "@xpx/kernel": ["../../packages/kernel/src/index.ts"]
     }
   },
   "include": ["src/**/*", "test/**/*", "wxt.config.ts"]
