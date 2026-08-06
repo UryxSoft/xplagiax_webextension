@@ -10,7 +10,11 @@
     "outDir": "./dist"
   },
 <<<<<<< HEAD
+<<<<<<< HEAD
   "include": ["src/**/*", "../../../../packages/ipc/src/rpc.ts"]
+=======
+  "include": ["src/**/*"]
+>>>>>>> feat: IPC tipado y host de inferencia offscreen en Chromium
 =======
   "include": ["src/**/*"]
 >>>>>>> feat: IPC tipado y host de inferencia offscreen en Chromium
