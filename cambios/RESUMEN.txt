@@ -1,6 +1,0 @@
-8e92c12 feat: detección de texto generado por IA con distil-ai-slop-detector
-c08a3d2 feat: IPC tipado y host de inferencia offscreen en Chromium
-
- pnpm-lock.yaml                                     | 401 ++++++++++++++++++++-
- vitest.config.ts                                   |   2 +
- 55 files changed, 4839 insertions(+), 71 deletions(-)
