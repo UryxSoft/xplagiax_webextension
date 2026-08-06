@@ -33,3 +33,5 @@ models/*.gguf
 !/opera_extension/README.md
 /Safari_extension/*
 !/Safari_extension/README.md
+cambios/
+cambios.tar.gz
