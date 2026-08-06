@@ -156,6 +156,11 @@ try {
   await popup.goto(`chrome-extension://${extId}/popup.html`);
   const boton = await popup.textContent('#analizar');
   comprobar('el popup se abre y ofrece la acción', boton?.includes('Analizar') === true, boton);
+
+  // Sin este botón, el detector de texto está registrado pero es inalcanzable:
+  // el análisis por defecto corta en Tier 1 y nunca lo planifica.
+  const profundo = await popup.textContent('#profundo');
+  comprobar('hay forma de pedir Tier 2', profundo?.includes('profundo') === true, profundo);
   await popup.close();
 
   /*

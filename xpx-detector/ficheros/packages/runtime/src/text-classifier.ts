@@ -40,13 +40,27 @@ export interface CompletionParams {
   readonly abortSignal?: AbortSignal;
 }
 
+/**
+ * La respuesta de wllama, con las formas que puede tomar.
+ *
+ * wllama no construye este objeto en JavaScript: devuelve tal cual el JSON que
+ * emite llama.cpp dentro del WebAssembly. Eso significa que la forma exacta
+ * depende del build del WASM y no se puede comprobar leyendo el paquete npm.
+ * Por eso se aceptan las tres variantes conocidas del formato OAI y, si no
+ * llega ninguna, se falla en voz alta en lugar de devolver texto vacío.
+ */
+export interface CompletionChoice {
+  readonly text?: string;
+  readonly message?: { readonly content?: string };
+  readonly logprobs?: {
+    readonly top_logprobs?: readonly Readonly<Record<string, number>>[];
+  } | null;
+}
+
 export interface CompletionResponse {
-  readonly choices: readonly {
-    readonly text: string;
-    readonly logprobs?: {
-      readonly top_logprobs?: readonly Readonly<Record<string, number>>[];
-    } | null;
-  }[];
+  readonly choices?: readonly CompletionChoice[];
+  /** Forma cruda de llama.cpp, sin envoltorio OAI. */
+  readonly content?: string;
 }
 
 export interface Classification {
@@ -145,8 +159,8 @@ export class WllamaTextClassifier implements TextClassifier {
       ...(signal !== undefined ? { abortSignal: signal } : {}),
     });
 
-    const choice = response.choices[0];
-    const rawOutput = choice?.text ?? '';
+    const choice = response.choices?.[0];
+    const rawOutput = extractText(response, choice);
 
     return {
       label: parseLabel(rawOutput),
@@ -164,4 +178,25 @@ export class WllamaTextClassifier implements TextClassifier {
     this.#loading = undefined;
     await this.#wllama.exit();
   }
+}
+
+/**
+ * Saca el texto generado, sea cual sea la envoltura.
+ *
+ * Un formato inesperado NO se convierte en cadena vacía. Hacerlo produciría el
+ * fallo más caro posible: la etiqueta se leería como `uncertain`, el detector
+ * se abstendría, y todo el sistema parecería funcionar mientras nunca detecta
+ * nada. Se prefiere un error con las claves reales, que se diagnostica en un
+ * minuto.
+ */
+function extractText(response: CompletionResponse, choice: CompletionChoice | undefined): string {
+  if (typeof choice?.text === 'string') return choice.text;
+  if (typeof choice?.message?.content === 'string') return choice.message.content;
+  if (typeof response.content === 'string') return response.content;
+
+  const claves = Object.keys(response as Record<string, unknown>).join(', ');
+  throw new Error(
+    `respuesta de wllama con forma inesperada; claves: [${claves}]. ` +
+      'Se esperaba choices[0].text, choices[0].message.content o content.',
+  );
 }

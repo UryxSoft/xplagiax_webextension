@@ -2,9 +2,9 @@
 # Aplica el detector de texto IA sobre el repositorio.
 #
 # Copia ficheros; no usa `git am`. Es deliberado: los parches chocaban una y
-# otra vez porque main se movía entre entrega y entrega, y porque main lleva
-# marcas de conflicto commiteadas que ningún merge a tres bandas puede resolver
-# solo. Copiar es idempotente — se puede repetir sin romper nada.
+# otra vez porque main se movía entre entregas, y porque main lleva marcas de
+# conflicto commiteadas que ningún merge a tres bandas resuelve solo. Copiar es
+# idempotente: se puede repetir sin romper nada.
 set -euo pipefail
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,14 +40,14 @@ cat <<'FIN'
 
 Listo. Verifica y construye:
 
-  pnpm exec vitest run                        # 325 tests
+  pnpm exec vitest run                        # 339 tests
   pnpm -r typecheck                           # 8 paquetes
   pnpm --filter @xpx/extension build:chrome   # → chrome_extension/
   pnpm --filter @xpx/extension zip            # → .output/*.zip
 
-Y commitea cuando estés conforme:
-
-  git add -A
-  git commit -m "feat: detector de texto IA (Tier 2) sobre distil-ai-slop-detector"
-  git push --force-with-lease -u origin claude/ai-content-detection-platform-bane80
+Para PROBAR el detector de texto:
+  1. chrome://extensions → recarga la extensión (importante: hay código nuevo)
+  2. Abre una página con texto EN INGLÉS
+  3. Pulsa el icono → "Análisis profundo"
+  4. La primera vez descarga 253 MB. Puede tardar varios minutos.
 FIN

@@ -15,6 +15,7 @@ export {
 
 export type {
   Classification,
+  CompletionChoice,
   CompletionParams,
   CompletionResponse,
   LoadParams,

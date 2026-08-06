@@ -226,13 +226,17 @@ describe('WllamaTextClassifier', () => {
     expect((await c.classify('x'.repeat(MAX_CHARS + 1))).truncated).toBe(true);
   });
 
-  it('una respuesta vacía no revienta: se lee como uncertain', async () => {
+  /**
+   * Antes esto devolvía `uncertain` con texto vacío. Se cambió a propósito: una
+   * respuesta sin texto no es «el modelo dudó», es «no entendimos la
+   * respuesta», y confundir las dos hace que un fallo de integración se
+   * disfrace de abstención legítima para siempre.
+   */
+  it('una respuesta sin texto es un error, no una duda del modelo', async () => {
     const f = fakeWllama(() => ({ choices: [] }));
     const c = new WllamaTextClassifier({ wllama: f.wllama });
     await c.load();
-    const r = await c.classify('texto');
-    expect(r.label).toBe('uncertain');
-    expect(r.rawOutput).toBe('');
+    await expect(c.classify('texto')).rejects.toThrow(/forma inesperada/);
   });
 
   it('dispose libera el modelo y deja de estar listo', async () => {
@@ -242,5 +246,52 @@ describe('WllamaTextClassifier', () => {
     await c.dispose();
     expect(f.calls.exit).toBe(1);
     expect(c.isReady()).toBe(false);
+  });
+});
+
+describe('formas de respuesta de wllama', () => {
+  /**
+   * wllama devuelve tal cual el JSON que emite llama.cpp dentro del WASM, así
+   * que la forma exacta no se puede comprobar leyendo el paquete npm. Se
+   * aceptan las variantes conocidas del formato OAI.
+   */
+  it('lee la forma de completado OAI', async () => {
+    const f = fakeWllama(() => ({ choices: [{ text: 'ai_generated' }] }));
+    const c = new WllamaTextClassifier({ wllama: f.wllama });
+    await c.load();
+    expect((await c.classify('t')).label).toBe('ai_generated');
+  });
+
+  it('lee la forma de chat OAI', async () => {
+    const f = fakeWllama(() => ({ choices: [{ message: { content: 'human_written' } }] }));
+    const c = new WllamaTextClassifier({ wllama: f.wllama });
+    await c.load();
+    expect((await c.classify('t')).label).toBe('human_written');
+  });
+
+  it('lee la forma cruda de llama.cpp', async () => {
+    const f = fakeWllama(() => ({ content: 'ai_generated' }));
+    const c = new WllamaTextClassifier({ wllama: f.wllama });
+    await c.load();
+    expect((await c.classify('t')).label).toBe('ai_generated');
+  });
+
+  /**
+   * El fallo más caro posible sería devolver cadena vacía: se leería como
+   * `uncertain`, el detector se abstendría, y el sistema entero parecería
+   * funcionar mientras nunca detecta nada. Mejor un error diagnosticable.
+   */
+  it('una forma desconocida falla en voz alta, no en silencio', async () => {
+    const f = fakeWllama(() => ({ resultado: 'ai_generated' }) as never);
+    const c = new WllamaTextClassifier({ wllama: f.wllama });
+    await c.load();
+    await expect(c.classify('t')).rejects.toThrow(/forma inesperada.*resultado/s);
+  });
+
+  it('un choices vacío también falla en voz alta', async () => {
+    const f = fakeWllama(() => ({ choices: [] }));
+    const c = new WllamaTextClassifier({ wllama: f.wllama });
+    await c.load();
+    await expect(c.classify('t')).rejects.toThrow(/forma inesperada/);
   });
 });
