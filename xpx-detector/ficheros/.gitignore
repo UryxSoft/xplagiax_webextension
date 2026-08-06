@@ -1,0 +1,46 @@
+node_modules/
+dist/
+build/
+.output/
+.wxt/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+.turbo/
+playwright-report/
+test-results/
+*.crx
+*.xpi
+*.zip
+models/*.onnx
+models/*.gguf
+*.tsbuildinfo
+
+# Artefactos que publica `pnpm build`. Son salida de compilación, no fuente:
+# el código vive en apps/extension/ y estos cinco directorios son destinos.
+# El README de cada uno sí se versiona, porque explica precisamente eso.
+/chrome_extension/*
+!/chrome_extension/README.md
+/firefox_extension/*
+!/firefox_extension/README.md
+/edge_extesion/*
+!/edge_extesion/README.md
+/opera_extension/*
+!/opera_extension/README.md
+/Safari_extension/*
+!/Safari_extension/README.md
+cambios/
+cambios.tar.gz
+
+# El WebAssembly de wllama es artefacto de una dependencia, no fuente. Lo copia
+# `pnpm --filter @xpx/extension assets` desde node_modules en cada build, así
+# queda atado a la versión de package.json en lugar de quedarse desfasado.
+apps/extension/public/wllama/
+parches/
+parches.tar.gz
+
+# Paquetes de entrega. Se colaron una vez en un commit y el resultado fue que
+# `git am cambios/*.patch` recogía parches viejos junto a los nuevos.
