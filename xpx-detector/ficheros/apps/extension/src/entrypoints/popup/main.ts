@@ -115,3 +115,20 @@ async function analizar(boton: HTMLElement, deep: boolean): Promise<void> {
 
 conectar('analizar', false);
 conectar('profundo', true);
+
+/**
+ * Sello de build visible.
+ *
+ * Existe por una razón muy concreta y poco glamurosa: cargar una extensión sin
+ * empaquetar y olvidar pulsar «recargar» deja a Chrome sirviendo el código
+ * anterior, y desde fuera es indistinguible de un fallo del código nuevo. Se
+ * pierde mucho tiempo así. Con la versión a la vista, la pregunta «¿estoy
+ * probando lo que creo?» se responde de un vistazo.
+ */
+const sello = document.getElementById('sello');
+if (sello !== null) {
+  const manifest = (globalThis as unknown as {
+    chrome: { runtime: { getManifest(): { version: string } } };
+  }).chrome.runtime.getManifest();
+  sello.textContent = `v${manifest.version} · detector de texto: sí`;
+}
